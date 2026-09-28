@@ -123,11 +123,14 @@ export async function POST(request: Request) {
 
     if (body.githubRepo?.trim() && session.teamId) {
       try {
-        await setTeamRepo({ teamId: session.teamId, githubRepo: body.githubRepo });
+        const team = await setTeamRepo({ teamId: session.teamId, githubRepo: body.githubRepo });
+        if (!team.github_repo) {
+          throw new Error("リポジトリを設定できませんでした。");
+        }
         webhook = await ensureRepoWebhook({
           accessToken: identity?.accessToken,
           scopes: identity?.scopes,
-          githubRepo: body.githubRepo,
+          githubRepo: team.github_repo,
           requestUrl: request.url
         });
       } catch (repoError) {

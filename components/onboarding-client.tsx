@@ -1267,7 +1267,7 @@ export function OnboardingClient({
                         value={githubRepo}
                         onChange={(event) => setGithubRepo(event.target.value)}
                         className={inputClass}
-                        placeholder="owner/repository"
+                        placeholder="https://github.com/owner/repository"
                       />
                     ) : (
                       <select
@@ -1290,7 +1290,7 @@ export function OnboardingClient({
                           }}
                           className="text-xs text-muted underline underline-offset-2 transition-colors hover:text-ink"
                         >
-                          {manualRepo ? "一覧から選ぶ" : "一覧に無い（手入力する）"}
+                          {manualRepo ? "一覧から選ぶ" : "一覧に無い（URLを貼り付ける）"}
                         </button>
 
                         {!canListPrivate && (
@@ -1464,7 +1464,7 @@ export function OnboardingClient({
                           onChange={(event) => setEditingGithubRepo(event.target.value)}
                           className={inputClass}
                           aria-label={`${team.name}のGitHubリポジトリ`}
-                          placeholder="owner/repository（任意）"
+                          placeholder="https://github.com/owner/repository（任意）"
                         />
                         <div className="flex justify-end gap-2">
                           <button

@@ -78,13 +78,16 @@ export async function POST(request: Request) {
       teamId: body.teamId,
       githubRepo: body.githubRepo
     });
+    if (!team.github_repo) {
+      throw new Error("リポジトリを設定できませんでした。");
+    }
 
     // 参加者に手作業でWebhookを張らせないため、ここで自動登録する。
     // 失敗してもリポジトリ設定は成功のままにして、理由だけ返す。
     const webhook = await ensureRepoWebhook({
       accessToken: identity?.accessToken,
       scopes: identity?.scopes,
-      githubRepo: body.githubRepo,
+      githubRepo: team.github_repo,
       requestUrl: request.url
     });
 

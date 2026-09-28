@@ -5,6 +5,7 @@ import {
   normalizeScoreConfig
 } from "@/lib/constants";
 import { isSupabaseConfigured } from "@/lib/env";
+import { normalizeGitHubRepo } from "@/lib/github-repo";
 import { getHouseLevel } from "@/lib/house";
 import { normalizeEventSchedule } from "@/lib/event-schedule";
 import {
@@ -2481,10 +2482,7 @@ export async function setTeamRepo(input: {
   teamId: string;
   githubRepo: string;
 }): Promise<Team> {
-  const githubRepo = input.githubRepo.trim();
-  if (!/^[^/\s]+\/[^/\s]+$/.test(githubRepo)) {
-    throw new Error("リポジトリは owner/repository の形式で指定してください。");
-  }
+  const githubRepo = normalizeGitHubRepo(input.githubRepo);
 
   if (isSupabaseConfigured()) {
     const supabase = createServerSupabaseClient();
@@ -2541,12 +2539,11 @@ export async function updateTeam(input: {
   githubRepo?: string | null;
 }): Promise<Team> {
   const name = input.name.trim();
-  const githubRepo = input.githubRepo?.trim() || null;
+  const githubRepo = input.githubRepo?.trim()
+    ? normalizeGitHubRepo(input.githubRepo)
+    : null;
 
   if (!name) throw new Error("チーム名を入力してください。");
-  if (githubRepo && !/^[^/\s]+\/[^/\s]+$/.test(githubRepo)) {
-    throw new Error("リポジトリは owner/repository の形式で指定してください。");
-  }
 
   if (isSupabaseConfigured()) {
     const supabase = createServerSupabaseClient();
@@ -2713,7 +2710,7 @@ export async function createTeamInvite(input: {
   eventId?: string;
 }): Promise<TeamInviteView> {
   const teamName = input.teamName.trim();
-  const githubRepo = input.githubRepo.trim();
+  const githubRepo = normalizeGitHubRepo(input.githubRepo);
   const invitedBy = input.invitedBy.trim() || "HackRadar Admin";
 
   if (!teamName || !githubRepo) {

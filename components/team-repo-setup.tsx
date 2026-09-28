@@ -70,13 +70,14 @@ export function TeamRepoSetup({ team, onDone }: { team: Team; onDone: () => void
       const payload = (await response.json().catch(() => ({}))) as {
         error?: string;
         webhook?: WebhookResult;
+        team?: Team;
       };
 
       if (!response.ok) throw new Error(payload.error ?? "設定できませんでした。");
 
       // 自動連携できたときだけ即座に閉じる。失敗時は手順を読ませてから閉じる。
       if (payload.webhook && payload.webhook.status === "skipped") {
-        setSavedRepo(githubRepo);
+        setSavedRepo(payload.team?.github_repo ?? githubRepo);
         setWebhook(payload.webhook);
         return;
       }
@@ -132,7 +133,7 @@ export function TeamRepoSetup({ team, onDone }: { team: Team; onDone: () => void
             value={githubRepo}
             onChange={(event) => setGithubRepo(event.target.value)}
             className={fieldClass}
-            placeholder="owner/repository"
+            placeholder="https://github.com/owner/repository"
             required
           />
         ) : (
@@ -157,7 +158,7 @@ export function TeamRepoSetup({ team, onDone }: { team: Team; onDone: () => void
               }}
               className="text-xs text-muted underline underline-offset-2 transition-colors hover:text-ink"
             >
-              {manual ? "一覧から選ぶ" : "一覧に無い（手入力する）"}
+              {manual ? "一覧から選ぶ" : "一覧に無い（URLを貼り付ける）"}
             </button>
 
             {!canListPrivate && (
