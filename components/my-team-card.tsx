@@ -1,4 +1,4 @@
-import { GitBranch, GitCommitHorizontal, Trophy } from "lucide-react";
+import { GitBranch, GitCommitHorizontal, Pencil, Trophy } from "lucide-react";
 import { TeamMembers } from "@/components/team-members";
 import type { ActivityView, Team, TeamMemberView } from "@/lib/types";
 
@@ -12,7 +12,8 @@ export function MyTeamCard({
   totalTeams,
   latestActivity,
   members,
-  viewerLogin = null
+  viewerLogin = null,
+  onChangeRepo
 }: {
   team: Team;
   rank: number;
@@ -20,6 +21,8 @@ export function MyTeamCard({
   latestActivity: ActivityView | null;
   members: TeamMemberView[];
   viewerLogin?: string | null;
+  /** ダッシュボード上で、自分のチームのリポジトリ設定を開く。 */
+  onChangeRepo?: () => void;
 }) {
   return (
     <section className="rounded-2xl border border-pulse/25 bg-surface p-5 shadow-card sm:p-6">
@@ -30,20 +33,32 @@ export function MyTeamCard({
             <h2 className="truncate text-2xl font-bold tracking-tight text-ink sm:text-3xl">
               {team.name}
             </h2>
-            {team.github_repo ? (
-              <a
-                href={`https://github.com/${team.github_repo}`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex max-w-full items-center gap-1 text-xs font-medium text-pulse underline-offset-2 hover:underline"
-                title={`${team.github_repo} をGitHubで開く`}
-              >
-                <GitBranch className="size-3.5 shrink-0" />
-                <span className="truncate">{team.github_repo}</span>
-              </a>
-            ) : (
-              <span className="text-xs text-muted">リポジトリ未設定</span>
-            )}
+            <div className="flex max-w-full items-center gap-2">
+              {team.github_repo ? (
+                <a
+                  href={`https://github.com/${team.github_repo}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex max-w-full items-center gap-1 text-xs font-medium text-pulse underline-offset-2 hover:underline"
+                  title={`${team.github_repo} をGitHubで開く`}
+                >
+                  <GitBranch className="size-3.5 shrink-0" />
+                  <span className="truncate">{team.github_repo}</span>
+                </a>
+              ) : (
+                <span className="text-xs text-muted">リポジトリ未設定</span>
+              )}
+              {onChangeRepo && (
+                <button
+                  type="button"
+                  onClick={onChangeRepo}
+                  className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-muted underline-offset-2 transition-colors hover:text-ink hover:underline"
+                >
+                  <Pencil className="size-3" />
+                  {team.github_repo ? "変更" : "設定"}
+                </button>
+              )}
+            </div>
           </div>
           <div className="mt-2.5">
             <TeamMembers members={members} viewerLogin={viewerLogin} />

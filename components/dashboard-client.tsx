@@ -56,6 +56,7 @@ export function DashboardClient({
   // 参加時に保存したセッションから自分のチームを拾い、一覧で目印を付ける。
   const [myTeamId, setMyTeamId] = useState<string | null>(null);
   const [sessionViewer, setSessionViewer] = useState<Viewer | null>(null);
+  const [isRepoEditorOpen, setIsRepoEditorOpen] = useState(false);
   const reconciledTeamIdRef = useRef<string | null>(null);
   const [verifiedCommitCounts, setVerifiedCommitCounts] = useState<Record<string, number> | null>(null);
   const [unattributedCommitCount, setUnattributedCommitCount] = useState(0);
@@ -233,8 +234,14 @@ export function DashboardClient({
         />
       )}
 
-      {myTeam && !myTeam.github_repo && (
-        <TeamRepoSetup team={myTeam} onDone={refresh} />
+      {myTeam && (!myTeam.github_repo || isRepoEditorOpen) && (
+        <TeamRepoSetup
+          team={myTeam}
+          onDone={() => {
+            setIsRepoEditorOpen(false);
+            void refresh();
+          }}
+        />
       )}
 
       {/* 参加者は自分のチームを先に見せる。運営は全チームをフラットに見る。 */}
@@ -247,6 +254,7 @@ export function DashboardClient({
             latestActivity={myLatestActivity}
             members={state.members.filter((member) => member.team_id === myTeam.id)}
             viewerLogin={activeViewer?.login ?? null}
+            onChangeRepo={() => setIsRepoEditorOpen(true)}
           />
           <WakaTimePanel viewerLogin={activeViewer?.login ?? null} />
         </div>

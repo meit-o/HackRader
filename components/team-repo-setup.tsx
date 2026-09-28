@@ -7,16 +7,14 @@ import { RepoOptions, type RepoOption } from "@/components/onboarding-client";
 import { WebhookNotice, type WebhookResult } from "@/components/webhook-notice";
 import type { Team } from "@/lib/types";
 
-/**
- * 参加後にリポジトリを紐づけるための欄。
- * 自分のチームにリポジトリが設定されていないときだけ表示する。
- */
+/** 参加後に、自分のチームのリポジトリを設定・変更するための欄。 */
 export function TeamRepoSetup({ team, onDone }: { team: Team; onDone: () => void }) {
   const [repos, setRepos] = useState<RepoOption[]>([]);
   const [canListPrivate, setCanListPrivate] = useState(false);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [manual, setManual] = useState(false);
-  const [githubRepo, setGithubRepo] = useState("");
+  // 変更時は現在の値を最初から選んでおく。手入力モードへ切り替えても値を失わない。
+  const [githubRepo, setGithubRepo] = useState(team.github_repo ?? "");
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState("");
   // 自動連携に失敗したときだけ、手動手順をこの場に出す。
@@ -97,7 +95,7 @@ export function TeamRepoSetup({ team, onDone }: { team: Team; onDone: () => void
   if (webhook) {
     return (
       <Panel
-        title="リポジトリを設定しました"
+        title={team.github_repo ? "リポジトリを変更しました" : "リポジトリを設定しました"}
         description={`「${team.name}」に ${savedRepo} を紐づけました。`}
       >
         <div className="space-y-3">
@@ -116,8 +114,12 @@ export function TeamRepoSetup({ team, onDone }: { team: Team; onDone: () => void
 
   return (
     <Panel
-      title="リポジトリを設定してください"
-      description={`「${team.name}」にGitHubリポジトリが紐づいていません。設定するとpushが反映されます。`}
+      title={team.github_repo ? "リポジトリを変更" : "リポジトリを設定してください"}
+      description={
+        team.github_repo
+          ? `「${team.name}」は現在 ${team.github_repo} を使用しています。変更後のpushから新しいリポジトリを反映します。`
+          : `「${team.name}」にGitHubリポジトリが紐づいていません。設定するとpushが反映されます。`
+      }
     >
       <form onSubmit={submit} className="space-y-3">
         {state === "loading" ? (
@@ -175,7 +177,7 @@ export function TeamRepoSetup({ team, onDone }: { team: Team; onDone: () => void
           className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-ink px-4 text-sm font-bold text-white shadow-btn transition-[box-shadow,background-color,transform] hover:bg-ink2 active:translate-y-px active:shadow-pressed disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
         >
           <GitBranch className="size-4" />
-          {isBusy ? "設定中..." : "このリポジトリにする"}
+          {isBusy ? "保存中..." : team.github_repo ? "このリポジトリに変更する" : "このリポジトリにする"}
         </button>
 
         {error && <p className="text-xs font-medium text-hot">{error}</p>}
