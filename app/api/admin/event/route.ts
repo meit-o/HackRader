@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isGitHubAuthConfigured } from "@/lib/github-auth";
 import { getCurrentIdentity } from "@/lib/session";
+import { hasEventEnded } from "@/lib/event-schedule";
 import {
   createTeamByName,
   createTeamInviteForTeam,
@@ -62,6 +63,8 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     name?: string;
     teamName?: string;
+    startsAt?: string;
+    endsAt?: string;
   };
 
   try {
@@ -82,7 +85,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const event = await saveEvent({ name: body.name, eventId: access.event.id });
+    const event = await saveEvent({
+      name: body.name,
+      eventId: access.event.id,
+      startsAt: body.startsAt,
+      endsAt: body.endsAt
+    });
     return NextResponse.json({ event });
   } catch (error) {
     return NextResponse.json(
@@ -111,6 +119,13 @@ export async function DELETE(request: Request) {
     return NextResponse.json(
       { error: "削除するイベントがありません。" },
       { status: 404 }
+    );
+  }
+
+  if (!hasEventEnded(current)) {
+    return NextResponse.json(
+      { error: "イベント終了時刻になるまで削除できません。" },
+      { status: 409 }
     );
   }
 

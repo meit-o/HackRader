@@ -6,6 +6,7 @@ import {
 } from "@/lib/constants";
 import { isSupabaseConfigured } from "@/lib/env";
 import { getHouseLevel } from "@/lib/house";
+import { normalizeEventSchedule } from "@/lib/event-schedule";
 import {
   seedActivities,
   seedChatMessages,
@@ -1578,16 +1579,24 @@ export async function getEventByJoinCode(code: string | undefined): Promise<Hack
 export async function createEvent(input: {
   name: string;
   ownerGithubUsername: string;
+  startsAt?: string | null;
+  endsAt?: string | null;
 }): Promise<HackEvent> {
   const name = input.name.trim();
   const owner = input.ownerGithubUsername.trim();
   if (!name || !owner) throw new Error("イベント名と主催者を確認してください。");
 
+  const schedule =
+    input.startsAt !== undefined || input.endsAt !== undefined
+      ? normalizeEventSchedule(input)
+      : { startsAt: null, endsAt: null };
   const event: HackEvent = {
     id: randomUUID(),
     name,
     join_code: makeJoinCode(),
     owner_github_username: owner,
+    starts_at: schedule.startsAt,
+    ends_at: schedule.endsAt,
     created_at: new Date().toISOString()
   };
 
@@ -1989,12 +1998,18 @@ export async function saveEvent(input: {
   name: string;
   ownerGithubUsername?: string;
   eventId?: string;
+  startsAt?: string | null;
+  endsAt?: string | null;
 }): Promise<HackEvent> {
   const name = input.name.trim();
   if (!name) throw new Error("イベント名を入力してください。");
 
   const existing = await getEvent(input.eventId);
   const joinCode = existing?.join_code ?? makeJoinCode();
+  const schedule =
+    input.startsAt !== undefined || input.endsAt !== undefined
+      ? normalizeEventSchedule(input)
+      : { startsAt: existing?.starts_at ?? null, endsAt: existing?.ends_at ?? null };
 
   if (isSupabaseConfigured()) {
     const supabase = createServerSupabaseClient();
@@ -2002,7 +2017,7 @@ export async function saveEvent(input: {
       if (existing) {
         const { data, error } = await supabase
           .from("events")
-          .update({ name, join_code: joinCode })
+          .update({ name, join_code: joinCode, starts_at: schedule.startsAt, ends_at: schedule.endsAt })
           .eq("id", existing.id)
           .select("*")
           .single();
@@ -2014,6 +2029,8 @@ export async function saveEvent(input: {
           name,
           join_code: makeJoinCode(),
           owner_github_username: input.ownerGithubUsername?.trim() || "test-owner",
+          starts_at: schedule.startsAt,
+          ends_at: schedule.endsAt,
           created_at: new Date().toISOString()
         };
         const { data, error } = await supabase
@@ -2034,6 +2051,8 @@ export async function saveEvent(input: {
     join_code: joinCode,
     owner_github_username:
       existing?.owner_github_username ?? input.ownerGithubUsername?.trim() ?? "test-owner",
+    starts_at: schedule.startsAt,
+    ends_at: schedule.endsAt,
     score_config: existing?.score_config,
     created_at: existing?.created_at ?? new Date().toISOString()
   };

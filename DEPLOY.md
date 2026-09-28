@@ -26,7 +26,7 @@ npm run build
 
 1. https://supabase.com でプロジェクトを作る（無料枠でよい）
 2. 左メニューの **SQL Editor** を開く
-3. **新規DB**なら `supabase/schema.sql` を実行する。**既存DB**なら先にバックアップを取り、`supabase/migrations/20260913_event_isolation_and_webhook_atomic.sql` を実行する。既存DBに新規用スキーマを丸ごと再実行しない
+3. **新規DB**なら `supabase/schema.sql` を実行する。**既存DB**なら先にバックアップを取り、`supabase/migrations/20260913_event_isolation_and_webhook_atomic.sql`、続けて `supabase/migrations/20260928_event_schedule.sql` を実行する。既存DBに新規用スキーマを丸ごと再実行しない
 4. 既存DBで移行が失敗した場合は、SQLのトランザクションがロールバックされる。表示された不足データ（イベント所有者、チーム・過去の会話のイベントID、同一イベント内の重複リポジトリ）を確認し、推測で埋めずに修正してから再実行する
 5. **Settings → API** から次の3つを控える
 

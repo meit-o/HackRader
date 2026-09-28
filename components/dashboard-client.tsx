@@ -9,6 +9,8 @@ import { AdminRepoStatus } from "@/components/admin-repo-status";
 import { DemoControls } from "@/components/demo-controls";
 import { DevelopmentOverview } from "@/components/development-overview";
 import { EventLeaderboard } from "@/components/event-leaderboard";
+import { EventCountdown } from "@/components/event-countdown";
+import { EventDeleteControl } from "@/components/event-delete-control";
 import { HelpBoard } from "@/components/help-board";
 import { HelpComposer } from "@/components/help-composer";
 import { MyTeamCard } from "@/components/my-team-card";
@@ -19,7 +21,7 @@ import { TeamRepoSetup } from "@/components/team-repo-setup";
 import { TechStackPanel } from "@/components/tech-stack-panel";
 import { WakaTimePanel } from "@/components/wakatime-panel";
 import { useHackVerseState } from "@/components/use-hackverse-state";
-import type { HackVerseState, UserRole } from "@/lib/types";
+import type { HackEvent, HackVerseState, UserRole } from "@/lib/types";
 
 type ViewMode = "dashboard" | "help" | "announcements";
 
@@ -31,11 +33,13 @@ type Viewer = {
 
 export function DashboardClient({
   initialState,
+  event = null,
   view,
   viewer = null,
   demoEnabled = false
 }: {
   initialState: HackVerseState;
+  event?: HackEvent | null;
   view: ViewMode;
   viewer?: Viewer | null;
   demoEnabled?: boolean;
@@ -222,6 +226,9 @@ export function DashboardClient({
           <DemoControls teams={state.teams} onTrigger={triggerDemoEvent} />
         )}
       </header>
+
+      <EventCountdown event={event} />
+      {isAdmin && event && <EventDeleteControl event={event} />}
 
       {/* 最初に他チームとの現在地を示し、その後に自チームの詳細を見る。 */}
       <EventLeaderboard teams={state.teams} myTeamId={myTeamId} />

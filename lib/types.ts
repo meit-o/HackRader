@@ -50,6 +50,9 @@ export type HackEvent = {
   name: string;
   join_code: string;
   owner_github_username: string;
+  /** 開催日時はUTCで保存し、画面側で利用者のタイムゾーンに表示する。 */
+  starts_at: string | null;
+  ends_at: string | null;
   /** 未設定なら既定の配点を使う。 */
   score_config?: Record<string, number> | null;
   created_at: string;

@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { EventDeleteControl } from "@/components/event-delete-control";
 import { HackRadarLogo } from "@/components/hackradar-logo";
 import { RolePicker, type OnboardingRole } from "@/components/role-picker";
 import { ScoreConfigEditor } from "@/components/score-config-editor";
@@ -69,6 +70,20 @@ const authErrorMessages: Record<string, string> = {
 
 function saveSession(session: AppSession) {
   window.localStorage.setItem("hackverse-session", JSON.stringify(session));
+}
+
+/** datetime-local とサーバー保存用ISOを相互に変換する。 */
+function toDateTimeLocal(value: string | null | undefined) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
+function toIsoDateTime(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }
 
 const inputClass =
@@ -195,14 +210,13 @@ export function OnboardingClient({
   const [myEvents] = useState(ownedEvents);
   const [myJoinedEvents, setMyJoinedEvents] = useState(joinedEvents);
   const [eventName, setEventName] = useState(initialEvent?.name ?? "");
+  const [eventStartsAt, setEventStartsAt] = useState(() => toDateTimeLocal(initialEvent?.starts_at));
+  const [eventEndsAt, setEventEndsAt] = useState(() => toDateTimeLocal(initialEvent?.ends_at));
   // joinCode はイベントの招待コード、roomCode はチームの部屋番号。
   // 複数のハッカソンを動かしたときに部屋番号が衝突しないよう、参加時は両方もらう。
   const [joinCode, setJoinCode] = useState("");
   const [roomCode, setRoomCode] = useState("");
   const [newTeamName, setNewTeamName] = useState("");
-  // イベント削除は取り返しがつかないので、開くのと打ち直すのを2段階に分ける。
-  const [showDeleteEvent, setShowDeleteEvent] = useState(false);
-  const [deleteConfirmCode, setDeleteConfirmCode] = useState("");
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
   const [editingTeamName, setEditingTeamName] = useState("");
   const [editingGithubRepo, setEditingGithubRepo] = useState("");
@@ -382,7 +396,11 @@ export function OnboardingClient({
       const response = await fetch("/api/admin/event", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: eventName })
+        body: JSON.stringify({
+          name: eventName,
+          startsAt: toIsoDateTime(eventStartsAt),
+          endsAt: toIsoDateTime(eventEndsAt)
+        })
       });
       const payload = (await response.json()) as { event?: HackEvent; error?: string };
 
@@ -391,6 +409,8 @@ export function OnboardingClient({
       }
 
       setHackEvent(payload.event);
+      setEventStartsAt(toDateTimeLocal(payload.event.starts_at));
+      setEventEndsAt(toDateTimeLocal(payload.event.ends_at));
       setMessage(`参加コード ${payload.event.join_code} を発行しました。`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "保存に失敗しました。");
@@ -407,7 +427,11 @@ export function OnboardingClient({
       const response = await fetch("/api/events", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: eventName })
+        body: JSON.stringify({
+          name: eventName,
+          startsAt: toIsoDateTime(eventStartsAt),
+          endsAt: toIsoDateTime(eventEndsAt)
+        })
       });
       const payload = (await response.json().catch(() => ({}))) as {
         event?: HackEvent;
@@ -428,6 +452,8 @@ export function OnboardingClient({
       setInvites([]);
       setMembers([]);
       setHackEvent(payload.event);
+      setEventStartsAt(toDateTimeLocal(payload.event.starts_at));
+      setEventEndsAt(toDateTimeLocal(payload.event.ends_at));
       setOpenAdminSetup(true);
       router.refresh();
     } catch (error) {
@@ -654,48 +680,6 @@ export function OnboardingClient({
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "メンバーを変更できませんでした。");
-    } finally {
-      setIsBusy(false);
-    }
-  }
-
-  /**
-   * イベントを丸ごと消す。
-   * 取り返しがつかないので、招待コードを打ち直してもらってから実行する。
-   */
-  async function removeEvent() {
-    if (!hackEvent) return;
-
-    setIsBusy(true);
-    setMessage("");
-
-    try {
-      const response = await fetch("/api/admin/event", {
-        method: "DELETE",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ confirmCode: deleteConfirmCode })
-      });
-      const payload = (await response.json().catch(() => ({}))) as {
-        deletedName?: string;
-        error?: string;
-      };
-
-      if (!response.ok) {
-        throw new Error(payload.error ?? "削除できませんでした。");
-      }
-
-      setHackEvent(null);
-      setEventName("");
-      setTeams([]);
-      setInvites([]);
-      setMembers([]);
-      setDeleteConfirmCode("");
-      setShowDeleteEvent(false);
-      setMessage(
-        `イベント「${payload.deletedName ?? ""}」を削除しました。新しいイベント名を登録すると、また最初から始められます。`
-      );
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "削除できませんでした。");
     } finally {
       setIsBusy(false);
     }
@@ -1067,6 +1051,24 @@ export function OnboardingClient({
                           required
                         />
                       </Field>
+                      <Field label="開始日時">
+                        <input
+                          type="datetime-local"
+                          value={eventStartsAt}
+                          onChange={(event) => setEventStartsAt(event.target.value)}
+                          className={inputClass}
+                          required
+                        />
+                      </Field>
+                      <Field label="終了日時">
+                        <input
+                          type="datetime-local"
+                          value={eventEndsAt}
+                          onChange={(event) => setEventEndsAt(event.target.value)}
+                          className={inputClass}
+                          required
+                        />
+                      </Field>
                       <button type="submit" disabled={isBusy} className={primaryButtonClass}>
                         <Plus className="size-4" />
                         このイベントを主催する
@@ -1365,6 +1367,29 @@ export function OnboardingClient({
                   required
                 />
               </Field>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="開始日時">
+                  <input
+                    type="datetime-local"
+                    value={eventStartsAt}
+                    onChange={(event) => setEventStartsAt(event.target.value)}
+                    className={inputClass}
+                    required
+                  />
+                </Field>
+                <Field label="終了日時">
+                  <input
+                    type="datetime-local"
+                    value={eventEndsAt}
+                    onChange={(event) => setEventEndsAt(event.target.value)}
+                    className={inputClass}
+                    required
+                  />
+                </Field>
+              </div>
+              <p className="-mt-2 text-xs leading-5 text-muted">
+                ダッシュボードの残り時間と、終了後のイベント削除の解錠に使います。
+              </p>
               <button type="submit" disabled={isBusy} className={primaryButtonClass}>
                 <Plus className="size-4" />
                 {hackEvent ? "イベント名を更新する" : "イベントを作る"}
@@ -1582,73 +1607,9 @@ export function OnboardingClient({
               </ul>
             )}
 
-            {/* 片付け用。開催中に押される事故を避けるため、いちばん下に置いて2段階にする。 */}
             {hackEvent && (
               <div className="mt-5 border-t border-line pt-5">
-                {showDeleteEvent ? (
-                  <div className="rounded-xl border border-hot/30 bg-hot/5 p-3.5">
-                    <p className="text-xs font-bold text-hot">
-                      イベントを削除します
-                    </p>
-                    <p className="mt-1.5 text-xs leading-5 text-ink2">
-                      チーム{teams.length > 0 ? `（${teams.length}件）` : ""}、参加者の所属、
-                      部屋番号、スコアと活動履歴、質問、お知らせが
-                      <strong className="font-bold text-hot">すべて消えます</strong>。
-                      招待コードも使えなくなります。元に戻せません。
-                    </p>
-                    {/* コードはここに出さない。
-                        出すと写すだけで済んでしまい、確認にならない。
-                        上に戻って自分で確かめてもらう。 */}
-                    <p className="mt-2.5 text-xs leading-5 text-ink2">
-                      確認のため、このイベントの招待コードを入力してください。
-                      上の「招待コード（イベント共通）」で確認できます。
-                    </p>
-                    <input
-                      value={deleteConfirmCode}
-                      onChange={(event) =>
-                        setDeleteConfirmCode(event.target.value.toUpperCase())
-                      }
-                      className={`${inputClass} mt-2 font-mono tracking-wide`}
-                      placeholder="0000-0000"
-                      autoComplete="off"
-                      aria-label="確認のための招待コード"
-                    />
-                    <div className="mt-3 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowDeleteEvent(false);
-                          setDeleteConfirmCode("");
-                        }}
-                        className="h-11 flex-1 rounded-xl border border-line bg-surface text-sm font-medium text-ink2 shadow-soft transition-colors hover:text-ink"
-                      >
-                        やめる
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void removeEvent()}
-                        disabled={
-                          isBusy ||
-                          deleteConfirmCode.trim().toUpperCase() !==
-                            hackEvent.join_code.toUpperCase()
-                        }
-                        className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-hot text-sm font-bold text-white shadow-btn transition-[box-shadow,background-color,transform] active:translate-y-px active:shadow-pressed disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
-                      >
-                        <Trash2 className="size-4" />
-                        削除する
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setShowDeleteEvent(true)}
-                    className="flex items-center gap-1.5 text-xs font-medium text-muted underline underline-offset-2 transition-colors hover:text-hot"
-                  >
-                    <Trash2 className="size-3.5" />
-                    このイベントを削除する
-                  </button>
-                )}
+                <EventDeleteControl event={hackEvent} />
               </div>
             )}
           </Collapsible>

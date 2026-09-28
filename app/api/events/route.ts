@@ -16,11 +16,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "主催するにはGitHubでログインしてください。" }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => ({}))) as { name?: string };
+  const body = (await request.json().catch(() => ({}))) as {
+    name?: string;
+    startsAt?: string;
+    endsAt?: string;
+  };
   try {
     const event = await createEvent({
       name: body.name ?? "",
-      ownerGithubUsername: identity.login
+      ownerGithubUsername: identity.login,
+      startsAt: body.startsAt,
+      endsAt: body.endsAt
     });
     const response = NextResponse.json({ event });
     response.cookies.set(

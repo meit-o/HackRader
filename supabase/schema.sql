@@ -15,6 +15,8 @@ create table if not exists public.events (
   name text not null,
   join_code text not null unique,
   owner_github_username text not null,
+  starts_at timestamptz,
+  ends_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -32,6 +34,10 @@ create table if not exists public.teams (
 -- 古いDBにも、イベント単位のインデックスや移行SQLより先に列を用意する。
 alter table public.events
   add column if not exists owner_github_username text;
+alter table public.events
+  add column if not exists starts_at timestamptz;
+alter table public.events
+  add column if not exists ends_at timestamptz;
 alter table public.teams
   add column if not exists event_id uuid references public.events(id) on delete cascade;
 
