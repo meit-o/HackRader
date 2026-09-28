@@ -35,6 +35,8 @@ export function StaffChat({
   readOnly?: boolean;
 }) {
   const isStaff = viewer?.role === "admin" || viewer?.role === "mentor";
+  // お知らせは運営の発信専用。APIでも検証するが、審査員や参加者に入力欄を見せない。
+  const mayPost = !readOnly && (!announcementOnly || viewer?.role === "admin");
 
   // 参加者は自分のチーム固定。メンターと運営はチームを切り替えて確認できる。
   const [selectedId, setSelectedId] = useState(
@@ -184,8 +186,8 @@ export function StaffChat({
         )}
       </div>
 
-      {readOnly ? null : (
-      <form onSubmit={handleSubmit} className="mt-3 flex gap-2">
+      {mayPost ? (
+        <form onSubmit={handleSubmit} className="mt-3 flex gap-2">
         <input
           value={message}
           onChange={(event) => setMessage(event.target.value)}
@@ -202,8 +204,8 @@ export function StaffChat({
           <Send className="size-4" />
           <span className="hidden sm:inline">送信</span>
         </button>
-      </form>
-      )}
+        </form>
+      ) : null}
 
       {error && <p className="mt-2 text-xs font-medium text-hot">{error}</p>}
     </Panel>
