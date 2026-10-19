@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   title: "HackRadar | チーム開発ダッシュボード",
   description:
     "GitHubの活動をリアルタイムに可視化し、チームの進捗・ランキング・相談を1画面にまとめるダッシュボード。",
-  icons: { icon: "/icon.png" }
+  icons: { icon: "/icon.png?v=2" }
 };
 
 export default function RootLayout({
