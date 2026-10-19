@@ -50,31 +50,33 @@ export function RolePicker({ onSelect }: { onSelect: (role: OnboardingRole) => v
         役割を選択してください
       </p>
 
-      {roleCards.map((card) => {
-        const Icon = card.icon;
-        return (
-          <button
-            key={card.role}
-            type="button"
-            onClick={() => onSelect(card.role)}
-            className="flex w-full items-center gap-3.5 rounded-2xl border border-line bg-paper p-4 text-left shadow-soft transition-[box-shadow,border-color,transform] hover:border-lineStrong hover:shadow-card active:translate-y-px active:shadow-pressed"
-          >
-            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-paper2 text-ink2 shadow-inset">
-              <Icon className="size-5" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-base font-bold tracking-tight text-ink">
-                {card.label}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {roleCards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <button
+              key={card.role}
+              type="button"
+              onClick={() => onSelect(card.role)}
+              className="flex w-full items-center gap-3.5 rounded-2xl border border-line bg-paper p-4 text-left shadow-soft transition-[box-shadow,border-color,transform] hover:border-lineStrong hover:shadow-card active:translate-y-px active:shadow-pressed"
+            >
+              <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-paper2 text-ink2 shadow-inset">
+                <Icon className="size-5" />
               </span>
-              <span className="block text-xs leading-5 text-muted">{card.detail}</span>
-              <span className="mt-0.5 block text-[11px] leading-4 text-muted/80">
-                {card.note}
+              <span className="min-w-0 flex-1">
+                <span className="block text-base font-bold tracking-tight text-ink">
+                  {card.label}
+                </span>
+                <span className="block text-xs leading-5 text-muted">{card.detail}</span>
+                <span className="mt-0.5 block text-[11px] leading-4 text-muted/80">
+                  {card.note}
+                </span>
               </span>
-            </span>
-            <ChevronRight className="size-4 shrink-0 text-muted" />
-          </button>
-        );
-      })}
+              <ChevronRight className="size-4 shrink-0 text-muted" />
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
