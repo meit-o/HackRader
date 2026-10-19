@@ -196,14 +196,15 @@ export function DashboardClient({
             onSubmit={createHelp}
           />
         )}
-        {!isJudge && <DirectMessages viewer={activeViewer} />}
-        {/* 審査員には学生同士の質問と解決の様子を、閲覧専用で見せる。 */}
+        {/* 審査員には学生同士の質問と解決の流れを、閲覧専用で見せる。 */}
         <HelpBoard
           posts={state.helpPosts}
           onReply={createHelpReply}
           onAccept={acceptHelpReply}
           readOnly={isJudge}
         />
+        {/* 個人DMは公開質問とチーム相談から分け、質問タブの末尾に置く。 */}
+        {!isJudge && <DirectMessages viewer={activeViewer} />}
       </div>
     );
   }

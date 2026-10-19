@@ -11,7 +11,8 @@ const themeInitializer = `try {
 export const metadata: Metadata = {
   title: "HackRadar | チーム開発ダッシュボード",
   description:
-    "GitHubの活動をリアルタイムに可視化し、チームの進捗・ランキング・相談を1画面にまとめるダッシュボード。"
+    "GitHubの活動をリアルタイムに可視化し、チームの進捗・ランキング・相談を1画面にまとめるダッシュボード。",
+  icons: { icon: "/icon.png" }
 };
 
 export default function RootLayout({
