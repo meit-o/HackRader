@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-vi.mock("@/lib/env", () => ({ isSupabaseConfigured: () => false }));
+vi.mock("@/lib/database", () => ({ isDatabaseConfigured: () => false }));
 import {
   createEvent,
   createTeamByName,

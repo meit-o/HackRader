@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase";
+import { getPostgresStore } from "@/lib/postgres-store";
 import { getHackVerseState, getMembershipInEvent } from "@/lib/store";
 import {
   fetchWakaTimeDailySeconds,
@@ -89,11 +89,11 @@ function datesInclusive(startDate: string, endDate: string): string[] {
 }
 
 async function findUserByGitHubLogin(githubLogin: string): Promise<MemberRow | null> {
-  const supabase = createServerSupabaseClient();
-  if (!supabase) throw new Error("Supabase is not configured.");
+  const db = getPostgresStore();
+  if (!db) throw new Error("Postgres is not configured.");
 
-  const { data, error } = await supabase
-    .from("users")
+  const { data, error } = await db
+    .table("users")
     .select("id,github_username,display_name")
     .ilike("github_username", githubLogin)
     .maybeSingle();
@@ -106,15 +106,15 @@ export async function saveWakaTimeConnection(
   githubLogin: string,
   tokens: WakaTimeTokens
 ): Promise<void> {
-  const supabase = createServerSupabaseClient();
-  if (!supabase) throw new Error("Supabase is not configured.");
+  const db = getPostgresStore();
+  if (!db) throw new Error("Postgres is not configured.");
 
   const user = await findUserByGitHubLogin(githubLogin);
   if (!user) {
     throw new Error("Join a team before connecting WakaTime.");
   }
 
-  const { error } = await supabase.from("wakatime_connections").upsert(
+  const { error } = await db.table("wakatime_connections").upsert(
     {
       user_id: user.id,
       access_token: tokens.accessToken,
@@ -129,22 +129,22 @@ export async function saveWakaTimeConnection(
 }
 
 export async function removeWakaTimeConnection(githubLogin: string): Promise<void> {
-  const supabase = createServerSupabaseClient();
-  if (!supabase) throw new Error("Supabase is not configured.");
+  const db = getPostgresStore();
+  if (!db) throw new Error("Postgres is not configured.");
 
   const user = await findUserByGitHubLogin(githubLogin);
   if (!user) return;
 
-  const { error } = await supabase.from("wakatime_connections").delete().eq("user_id", user.id);
+  const { error } = await db.table("wakatime_connections").delete().eq("user_id", user.id);
   if (error) throw error;
 }
 
 async function saveRefreshedTokens(userId: string, tokens: WakaTimeTokens): Promise<void> {
-  const supabase = createServerSupabaseClient();
-  if (!supabase) throw new Error("Supabase is not configured.");
+  const db = getPostgresStore();
+  if (!db) throw new Error("Postgres is not configured.");
 
-  const { error } = await supabase
-    .from("wakatime_connections")
+  const { error } = await db
+    .table("wakatime_connections")
     .update({
       access_token: tokens.accessToken,
       refresh_token: tokens.refreshToken,
@@ -275,8 +275,8 @@ export async function getWakaTimeEventLeaderboard({
   const cached = leaderboardCache.get(eventId);
   if (!forceRefresh && cached && cached.expiresAt > Date.now()) return cached.value;
 
-  const supabase = createServerSupabaseClient();
-  if (!supabase) throw new Error("Supabase is not configured.");
+  const db = getPostgresStore();
+  if (!db) throw new Error("Postgres is not configured.");
 
   const endDate = tokyoDate(new Date());
   const startDate = eventStartedAt ? tokyoDate(new Date(eventStartedAt)) : endDate;
@@ -285,17 +285,17 @@ export async function getWakaTimeEventLeaderboard({
   const teamIds = teams.map((team) => team.id);
   if (teamIds.length === 0) return { startDate, endDate, teams: [] };
 
-  const { data: membershipRows, error: membershipsError } = await supabase
-    .from("team_members")
+  const { data: membershipRows, error: membershipsError } = await db
+    .table("team_members")
     .select("team_id,user_id")
     .in("team_id", teamIds);
   if (membershipsError) throw membershipsError;
 
   const memberships = (membershipRows ?? []) as Array<{ team_id: string; user_id: string }>;
-  const userIds = [...new Set(memberships.map((member) => member.user_id))];
+  const userIds = [...new Set(memberships.map((member: any) => member.user_id))];
   const connectionsResult = userIds.length
-    ? await supabase
-        .from("wakatime_connections")
+    ? await db
+        .table("wakatime_connections")
         .select("user_id,access_token,refresh_token,expires_at")
         .in("user_id", userIds)
     : { data: [], error: null };
@@ -318,13 +318,13 @@ export async function getWakaTimeEventLeaderboard({
     teams: teams
       .map((team) => {
         const members = memberships.filter((membership) => membership.team_id === team.id);
-        const totals = members.map((member) => resultByUserId.get(member.user_id));
+        const totals = members.map((member: any) => resultByUserId.get(member.user_id));
         return {
           teamId: team.id,
           teamName: team.name,
           seconds: totals.reduce((total, member) => total + (member?.seconds ?? 0), 0),
           totalMembers: members.length,
-          connectedMembers: totals.filter((member) => member?.connected).length
+          connectedMembers: totals.filter((member: any) => member?.connected).length
         };
       })
       .sort((left, right) => right.seconds - left.seconds || left.teamName.localeCompare(right.teamName))
@@ -344,8 +344,8 @@ export async function getWakaTimeDashboardSummary({
   eventStartedAt: string | null;
   includeDaily?: boolean;
 }): Promise<WakaTimeDashboardSummary> {
-  const supabase = createServerSupabaseClient();
-  if (!supabase) throw new Error("Supabase is not configured.");
+  const db = getPostgresStore();
+  if (!db) throw new Error("Postgres is not configured.");
 
   const viewer = await findUserByGitHubLogin(githubLogin);
   const endDate = tokyoDate(new Date());
@@ -373,8 +373,8 @@ export async function getWakaTimeDashboardSummary({
   });
   const teamId = viewerMembership?.teamId ?? null;
 
-  const { data: viewerConnection, error: viewerConnectionError } = await supabase
-    .from("wakatime_connections")
+  const { data: viewerConnection, error: viewerConnectionError } = await db
+    .table("wakatime_connections")
     .select("user_id")
     .eq("user_id", viewer.id)
     .maybeSingle();
@@ -394,13 +394,13 @@ export async function getWakaTimeDashboardSummary({
     };
   }
 
-  const { data: memberships, error: membersError } = await supabase
-    .from("team_members")
+  const { data: memberships, error: membersError } = await db
+    .table("team_members")
     .select("user_id")
     .eq("team_id", teamId);
   if (membersError) throw membersError;
 
-  const userIds = (memberships ?? []).map((member) => member.user_id as string);
+  const userIds = (memberships ?? []).map((member: any) => member.user_id as string);
   if (userIds.length === 0) {
     return {
       connected: Boolean(viewerConnection),
@@ -416,9 +416,9 @@ export async function getWakaTimeDashboardSummary({
   }
 
   const [usersResult, connectionsResult] = await Promise.all([
-    supabase.from("users").select("id,github_username,display_name").in("id", userIds),
-    supabase
-      .from("wakatime_connections")
+    db.table("users").select("id,github_username,display_name").in("id", userIds),
+    db
+      .table("wakatime_connections")
       .select("user_id,access_token,refresh_token,expires_at")
       .in("user_id", userIds)
   ]);
@@ -434,7 +434,7 @@ export async function getWakaTimeDashboardSummary({
   );
 
   const memberResults = await Promise.all(
-    ((usersResult.data ?? []) as MemberRow[]).map(async (member) => {
+    ((usersResult.data ?? []) as MemberRow[]).map(async (member: any) => {
       const connection = connections.get(member.id);
       if (!connection) {
         return {
@@ -463,7 +463,7 @@ export async function getWakaTimeDashboardSummary({
     })
   );
 
-  const members = memberResults.map((member) => ({
+  const members = memberResults.map((member: any) => ({
     githubUsername: member.githubUsername,
     displayName: member.displayName,
     seconds: member.seconds,
@@ -485,7 +485,7 @@ export async function getWakaTimeDashboardSummary({
     teamId,
     teamTotalSeconds: members.reduce((total, member) => total + member.seconds, 0),
     totalMembers: members.length,
-    connectedMembers: members.filter((member) => member.connected).length,
+    connectedMembers: members.filter((member: any) => member.connected).length,
     startDate,
     endDate,
     members: members.sort((a, b) => b.seconds - a.seconds),

@@ -4,7 +4,7 @@ import {
   DEFAULT_SCORE_BY_ACTIVITY,
   normalizeScoreConfig
 } from "@/lib/constants";
-import { isSupabaseConfigured } from "@/lib/env";
+import { isDatabaseConfigured } from "@/lib/database";
 import { normalizeGitHubRepo } from "@/lib/github-repo";
 import { getHouseLevel } from "@/lib/house";
 import { normalizeEventSchedule } from "@/lib/event-schedule";
@@ -18,7 +18,7 @@ import {
   seedTeams,
   seedUsers
 } from "@/lib/seed";
-import { createServerSupabaseClient } from "@/lib/supabase";
+import { getPostgresStore } from "@/lib/postgres-store";
 import type {
   Activity,
   ActivityType,
@@ -147,7 +147,7 @@ function buildContributors(
   members: TeamMemberView[]
 ): ContributorView[] {
   const memberByLogin = new Map(
-    members.map((member) => [member.github_username.toLowerCase(), member])
+    members.map((member: any) => [member.github_username.toLowerCase(), member])
   );
   const byKey = new Map<string, ContributorView>();
 
@@ -203,7 +203,7 @@ function withViews(
   contributorActivities: Activity[] = activities,
   viewer?: StateViewer
 ): HackVerseState {
-  const teamsById = new Map(teams.map((team) => [team.id, team]));
+  const teamsById = new Map(teams.map((team: any) => [team.id, team]));
   const usersById = new Map(users.map((user) => [user.id, user]));
 
   const activityViews: ActivityView[] = activities
@@ -251,7 +251,7 @@ function withViews(
 
   // 誰がどのチームに入っているか。GitHubユーザー名が分かる人だけ載せる。
   const memberViews: TeamMemberView[] = teamMembers
-    .map((member) => {
+    .map((member: any) => {
       if (!teamsById.has(member.team_id)) return null;
       const user = usersById.get(member.user_id);
       if (!user) return null;
@@ -270,10 +270,10 @@ function withViews(
   const viewerTeamIds = new Set(
     memberViews
       .filter(
-        (member) =>
+        (member: any) =>
           member.github_username.toLowerCase() === viewer?.githubUsername.toLowerCase()
       )
-      .map((member) => member.team_id)
+      .map((member: any) => member.team_id)
   );
   const visibleMessages = messages.filter((message) => {
     if (!viewer || viewer.role === "admin" || viewer.role === "mentor") return true;
@@ -312,17 +312,17 @@ function isMissingActorColumn(error: { message?: string } | null): boolean {
   return message.includes("actor_login") || message.includes("actor_avatar_url");
 }
 
-export async function getSupabaseHackVerseState(
+export async function getPostgresHackVerseState(
   eventId?: string | null,
   viewer?: StateViewer
 ): Promise<HackVerseState> {
-  const supabase = createServerSupabaseClient();
-  if (!supabase) {
-    throw new Error("Supabase is not configured.");
+  const db = getPostgresStore();
+  if (!db) {
+    throw new Error("Postgres is not configured.");
   }
 
-  const teamsQuery = supabase
-    .from("teams")
+  const teamsQuery = db
+    .table("teams")
     .select("id,event_id,name,github_repo,score,commit_count,house_level,created_at");
   if (eventId) teamsQuery.eq("event_id", eventId);
 
@@ -330,27 +330,27 @@ export async function getSupabaseHackVerseState(
   if (teamsResult.error) throw teamsResult.error;
 
   const teams = ((teamsResult.data ?? []) as Team[]).map(normalizeTeam);
-  const teamIds = teams.map((team) => team.id);
+  const teamIds = teams.map((team: any) => team.id);
   const emptyResult = Promise.resolve({ data: [], error: null });
 
-  const activitiesQuery = supabase
-    .from("activities")
+  const activitiesQuery = db
+    .table("activities")
     .select(ACTIVITY_COLUMNS)
     .order("created_at", { ascending: false })
     .limit(30);
-  const helpPostsQuery = supabase
-    .from("help_posts")
+  const helpPostsQuery = db
+    .table("help_posts")
     .select("*")
     .order("created_at", { ascending: false })
     .limit(30);
-  const messagesQuery = supabase
-    .from("chat_messages")
+  const messagesQuery = db
+    .table("chat_messages")
     .select("*")
     .order("created_at", { ascending: true })
     .limit(80);
-  const teamMembersQuery = supabase.from("team_members").select("*");
-  const contributorQuery = supabase
-    .from("activities")
+  const teamMembersQuery = db.table("team_members").select("*");
+  const contributorQuery = db
+    .table("activities")
     .select("id,team_id,type,score_delta,actor_login,actor_avatar_url,metadata,created_at")
     .not("actor_login", "is", null)
     .order("created_at", { ascending: false })
@@ -372,7 +372,7 @@ export async function getSupabaseHackVerseState(
     teamMembersResult,
     contributorResult
   ] = await Promise.all([
-    supabase.from("users").select("*"),
+    db.table("users").select("*"),
     eventId && teamIds.length === 0 ? emptyResult : activitiesQuery,
     eventId && teamIds.length === 0 ? emptyResult : helpPostsQuery,
     messagesQuery,
@@ -385,8 +385,8 @@ export async function getSupabaseHackVerseState(
     eventId && helpPostIds.length === 0
       ? await emptyResult
       : await (() => {
-          const query = supabase
-            .from("help_replies")
+          const query = db
+            .table("help_replies")
             .select("*")
             .order("created_at", { ascending: true })
             .limit(200);
@@ -407,8 +407,8 @@ export async function getSupabaseHackVerseState(
   let activities: { data: unknown[] | null; error: { message?: string } | null } =
     activitiesResult;
   if (activities.error && isMissingActorColumn(activities.error)) {
-    const legacyQuery = supabase
-      .from("activities")
+    const legacyQuery = db
+      .table("activities")
       .select(LEGACY_ACTIVITY_COLUMNS)
       .order("created_at", { ascending: false })
       .limit(30);
@@ -437,13 +437,13 @@ export async function getHackVerseState(
   eventId?: string | null,
   viewer?: StateViewer
 ): Promise<HackVerseState> {
-  if (isSupabaseConfigured()) {
+  if (isDatabaseConfigured()) {
     // 本番DBの失敗を空のメモリデータで隠さず、利用者と監視に障害を知らせる。
-    return getSupabaseHackVerseState(eventId, viewer);
+    return getPostgresHackVerseState(eventId, viewer);
   }
 
   const store = getMemoryStore();
-  const teams = eventId ? store.teams.filter((team) => team.event_id === eventId) : store.teams;
+  const teams = eventId ? store.teams.filter((team: any) => team.event_id === eventId) : store.teams;
   return withViews(
     store.users,
     teams,
@@ -491,18 +491,18 @@ function makeActivityMessage(
   return `${teamName} ${ACTIVITY_LABELS[type]}`;
 }
 
-async function findOrCreateSupabaseTeam(
+async function findOrCreatePostgresTeam(
   githubRepo: string,
   fallbackName: string,
   eventId?: string
 ) {
-  const supabase = createServerSupabaseClient();
-  if (!supabase) {
+  const db = getPostgresStore();
+  if (!db) {
     return null;
   }
 
-  const { data: existingTeam, error: selectError } = await supabase
-    .from("teams")
+  const { data: existingTeam, error: selectError } = await db
+    .table("teams")
     .select("*")
     .eq("github_repo", githubRepo)
     .eq("event_id", eventId ?? (await getEvent())?.id ?? "")
@@ -527,8 +527,8 @@ async function findOrCreateSupabaseTeam(
     created_at: new Date().toISOString()
   };
 
-  const { data, error: insertError } = await supabase
-    .from("teams")
+  const { data, error: insertError } = await db
+    .table("teams")
     .insert(newTeam)
     .select("*")
     .single();
@@ -540,14 +540,14 @@ async function findOrCreateSupabaseTeam(
   return (data as Team | null) ?? newTeam;
 }
 
-async function findSupabaseTeam(githubRepo: string) {
-  const supabase = createServerSupabaseClient();
-  if (!supabase) {
+async function findPostgresTeam(githubRepo: string) {
+  const db = getPostgresStore();
+  if (!db) {
     return null;
   }
 
-  const { data, error } = await supabase
-    .from("teams")
+  const { data, error } = await db
+    .table("teams")
     .select("*")
     .ilike("github_repo", githubRepo)
     .limit(2);
@@ -563,7 +563,7 @@ function findOrCreateMemoryTeam(githubRepo: string, fallbackName: string, eventI
   const store = getMemoryStore();
   const currentEventId = eventId ?? store.event?.id ?? "memory-event";
   const existingTeam = store.teams.find(
-    (team) => team.github_repo === githubRepo && team.event_id === currentEventId
+    (team: any) => team.github_repo === githubRepo && team.event_id === currentEventId
   );
   if (existingTeam) {
     return existingTeam;
@@ -614,14 +614,14 @@ export async function recordActivity(input: {
       ? Math.max(0, Math.floor(metadata.commitCount))
       : 0;
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
       let team: Team | null = null;
 
       if (input.teamId) {
-        const { data, error } = await supabase
-          .from("teams")
+        const { data, error } = await db
+          .table("teams")
           .select("*")
           .eq("id", input.teamId)
           .maybeSingle();
@@ -631,7 +631,7 @@ export async function recordActivity(input: {
       }
 
       if (!team && input.githubRepo) {
-        team = await findSupabaseTeam(input.githubRepo);
+        team = await findPostgresTeam(input.githubRepo);
 
         // 登録されていないリポジトリからの通知は、他チームに混ぜず捨てる。
         if (!team) return null;
@@ -652,8 +652,8 @@ export async function recordActivity(input: {
 
       // 同じコミットを機能ブランチとmainへpushしても、SHA単位では一度だけ数える。
       if (input.type === "push") {
-        const { data: previousActivities, error: previousActivitiesError } = await supabase
-          .from("activities")
+        const { data: previousActivities, error: previousActivitiesError } = await db
+          .table("activities")
           .select("metadata")
           .eq("team_id", team.id)
           .eq("type", "push")
@@ -679,8 +679,8 @@ export async function recordActivity(input: {
         created_at: new Date().toISOString()
       };
 
-      const { data: atomicActivity, error: atomicError } = await supabase
-        .rpc("record_activity_atomic", {
+      const { data: atomicActivity, error: atomicError } = await db
+        .recordActivityAtomically( {
           p_id: activity.id,
           p_team_id: activity.team_id,
           p_type: activity.type,
@@ -691,8 +691,7 @@ export async function recordActivity(input: {
           p_actor_avatar_url: activity.actor_avatar_url,
           p_metadata: activity.metadata,
           p_created_at: activity.created_at
-        })
-        .maybeSingle();
+        });
 
       if (atomicError) throw atomicError;
       if (!atomicActivity) throw new Error("Atomic activity recording returned no row");
@@ -715,7 +714,7 @@ export async function recordActivity(input: {
       (candidate) => candidate.github_repo?.toLowerCase() === input.githubRepo?.toLowerCase()
     );
     team = matchingTeams.length === 1 ? matchingTeams[0] : undefined;
-    // Supabase側と同じく、未登録リポジトリの通知は捨てる。
+    // Postgres側と同じく、未登録リポジトリの通知は捨てる。
     if (!team) return null;
   }
 
@@ -793,19 +792,19 @@ export async function recordRepositoryActivity(input: {
   if (!githubRepo) return [];
 
   let teamIds: string[];
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (!supabase) return [];
-    const { data, error } = await supabase
-      .from("teams")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (!db) return [];
+    const { data, error } = await db
+      .table("teams")
       .select("id")
       .ilike("github_repo", githubRepo);
     if (error) throw error;
-    teamIds = (data ?? []).map((team) => team.id as string);
+    teamIds = (data ?? []).map((team: any) => team.id as string);
   } else {
     teamIds = getMemoryStore().teams
-      .filter((team) => team.github_repo?.toLowerCase() === githubRepo.toLowerCase())
-      .map((team) => team.id);
+      .filter((team: any) => team.github_repo?.toLowerCase() === githubRepo.toLowerCase())
+      .map((team: any) => team.id);
   }
 
   const recorded = await Promise.all(
@@ -828,11 +827,11 @@ export async function syncDirectMessageProfile(input: {
   const githubUsername = input.githubUsername.trim();
   if (!githubUsername) return;
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data: user, error } = await supabase
-        .from("users")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data: user, error } = await db
+        .table("users")
         .upsert(
           {
             github_username: githubUsername,
@@ -846,7 +845,7 @@ export async function syncDirectMessageProfile(input: {
         .single();
       if (error || !user) throw error ?? new Error("プロフィールを保存できませんでした。");
 
-      const { error: membershipError } = await supabase.from("event_members").upsert(
+      const { error: membershipError } = await db.table("event_members").upsert(
         {
           event_id: input.eventId,
           user_id: user.id,
@@ -882,7 +881,7 @@ export async function syncDirectMessageProfile(input: {
   }
 
   const membership = store.eventMembers.find(
-    (member) => member.event_id === input.eventId && member.user_id === existing.id
+    (member: any) => member.event_id === input.eventId && member.user_id === existing.id
   );
   if (membership) {
     membership.role = input.role;
@@ -922,11 +921,11 @@ export async function getDirectMessageContacts(input: {
   const allowedRoles = dmRecipientRoles(input.viewerRole);
   if (allowedRoles.length === 0) return [];
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data: memberRows, error: membershipError } = await supabase
-        .from("event_members")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data: memberRows, error: membershipError } = await db
+        .table("event_members")
         .select("user_id,role,specialty")
         .eq("event_id", input.eventId)
         .in("role", allowedRoles)
@@ -937,14 +936,14 @@ export async function getDirectMessageContacts(input: {
       >[];
       if (memberships.length === 0) return [];
 
-      const { data: users, error: usersError } = await supabase
-        .from("users")
+      const { data: users, error: usersError } = await db
+        .table("users")
         .select("id,github_username,display_name,avatar_url")
-        .in("id", memberships.map((member) => member.user_id))
+        .in("id", memberships.map((member: any) => member.user_id))
         .order("display_name", { ascending: true });
       if (usersError) throw usersError;
       const membershipByUser = new Map(
-        memberships.map((membership) => [membership.user_id, membership])
+        memberships.map((membership: any) => [membership.user_id, membership])
       );
       return ((users ?? []) as Array<
         Pick<User, "id" | "github_username" | "display_name" | "avatar_url">
@@ -973,9 +972,9 @@ export async function getDirectMessageContacts(input: {
   const membershipByUser = new Map(
     store.eventMembers
       .filter(
-        (member) => member.event_id === input.eventId && allowedRoles.includes(member.role)
+        (member: any) => member.event_id === input.eventId && allowedRoles.includes(member.role)
       )
-      .map((member) => [member.user_id, member])
+      .map((member: any) => [member.user_id, member])
   );
   return store.users
     .filter(
@@ -1002,38 +1001,19 @@ export async function getDirectMessages(
   const normalizedLogin = viewerLogin.trim();
   if (!normalizedLogin) return [];
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data, error } = await supabase
-        .from("direct_messages")
-        .select("*")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data, error } = await db
+        .table("direct_messages")
+        .select("id,event_id,sender_login,recipient_login,sender_name,sender_role,body,attachment_path,attachment_name,attachment_mime_type,attachment_size,created_at")
         .or(`sender_login.ilike.${normalizedLogin},recipient_login.ilike.${normalizedLogin}`)
         .eq("event_id", eventId ?? "")
         .order("created_at", { ascending: true })
         .limit(300);
       if (error) throw error;
       const messages = (data ?? []) as DirectMessage[];
-      const attachmentPaths = messages
-        .map((message) => message.attachment_path)
-        .filter((path): path is string => Boolean(path));
-
-      if (attachmentPaths.length === 0) return messages;
-
-      const { data: signedUrls, error: signedUrlError } = await supabase.storage
-        .from("direct-message-attachments")
-        .createSignedUrls(attachmentPaths, 60 * 60);
-      if (signedUrlError) throw signedUrlError;
-
-      const urlByPath = new Map(
-        (signedUrls ?? []).map((item) => [item.path, item.signedUrl])
-      );
-      return messages.map((message) => ({
-        ...message,
-        attachment_url: message.attachment_path
-          ? urlByPath.get(message.attachment_path) ?? null
-          : null
-      }));
+      return messages.map((message) => ({ ...message, attachment_url: message.attachment_path ? "/api/direct-messages/attachment/" + message.id : null }));
     }
   }
 
@@ -1059,6 +1039,7 @@ export async function createDirectMessage(input: {
   attachmentName?: string | null;
   attachmentMimeType?: string | null;
   attachmentSize?: number | null;
+  attachmentData?: Buffer | null;
 }): Promise<DirectMessage> {
   const senderLogin = input.senderLogin.trim();
   const recipientLogin = input.recipientLogin.trim();
@@ -1085,11 +1066,11 @@ export async function createDirectMessage(input: {
   }
 
   let recipient: Pick<User, "id" | "github_username"> | undefined;
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data, error } = await supabase
-        .from("users")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data, error } = await db
+        .table("users")
         .select("id,github_username")
         .ilike("github_username", recipientLogin)
         .maybeSingle();
@@ -1099,8 +1080,8 @@ export async function createDirectMessage(input: {
       if (!recipient) {
         throw new Error("この相手にはDMを送れません。");
       }
-      const { data: recipientMembership, error: membershipError } = await supabase
-        .from("event_members")
+      const { data: recipientMembership, error: membershipError } = await db
+        .table("event_members")
         .select("role")
         .eq("event_id", eventId)
         .eq("user_id", recipient.id)
@@ -1110,7 +1091,7 @@ export async function createDirectMessage(input: {
         throw new Error("このイベントの相手にはDMを送れません。");
       }
 
-      const message: DirectMessage = {
+      const message: DirectMessage & { attachment_data?: Buffer | null } = {
         id: randomUUID(),
         event_id: eventId,
         sender_login: senderLogin,
@@ -1122,12 +1103,13 @@ export async function createDirectMessage(input: {
         attachment_name: attachmentName,
         attachment_mime_type: attachmentMimeType,
         attachment_size: attachmentSize,
+        attachment_data: input.attachmentData ?? null,
         created_at: new Date().toISOString()
       };
-      const { data: saved, error: insertError } = await supabase
-        .from("direct_messages")
-        .insert(message)
-        .select("*")
+      const { data: saved, error: insertError } = await db
+        .table("direct_messages")
+        .insert(message as DirectMessage & { attachment_data?: Buffer | null })
+        .select("id,event_id,sender_login,recipient_login,sender_name,sender_role,body,attachment_path,attachment_name,attachment_mime_type,attachment_size,created_at")
         .single();
       if (insertError || !saved) throw insertError ?? new Error("DMを保存できませんでした。");
       return saved as DirectMessage;
@@ -1140,7 +1122,7 @@ export async function createDirectMessage(input: {
   );
   const recipientMembership = recipient
     ? store.eventMembers.find(
-        (member) => member.event_id === eventId && member.user_id === recipient?.id
+        (member: any) => member.event_id === eventId && member.user_id === recipient?.id
       )
     : undefined;
   if (!recipient || !recipientMembership || !allowedRoles.includes(recipientMembership.role)) {
@@ -1199,11 +1181,11 @@ export async function createChatMessage(input: {
     created_at: new Date().toISOString()
   };
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data, error } = await supabase
-        .from("chat_messages")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data, error } = await db
+        .table("chat_messages")
         .insert(message)
         .select("*")
         .single();
@@ -1241,11 +1223,11 @@ export async function createHelpPost(input: {
     throw new Error("カテゴリは1〜50文字で入力してください。");
   }
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data: team } = await supabase
-        .from("teams")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data: team } = await db
+        .table("teams")
         .select("*")
         .eq("id", input.teamId)
         .single();
@@ -1259,8 +1241,8 @@ export async function createHelpPost(input: {
       // ログイン済みならその本人を、そうでなければ既存の参加者を投稿者にする。
       let author: User | null = null;
       if (input.authorGithub) {
-        const { data, error: authorError } = await supabase
-          .from("users")
+        const { data, error: authorError } = await db
+          .table("users")
           .upsert(
             {
               github_username: input.authorGithub,
@@ -1275,8 +1257,8 @@ export async function createHelpPost(input: {
         }
         author = data as User | null;
       } else {
-        const { data, error: authorError } = await supabase
-          .from("users")
+        const { data, error: authorError } = await db
+          .table("users")
           .select("*")
           .eq("role", "participant")
           .limit(1)
@@ -1299,7 +1281,7 @@ export async function createHelpPost(input: {
         created_at: new Date().toISOString()
       };
 
-      const { error: insertError } = await supabase.from("help_posts").insert(post);
+      const { error: insertError } = await db.table("help_posts").insert(post);
       if (insertError) throw insertError;
       const { user_id: _privateUserId, ...publicPost } = post;
       void _privateUserId;
@@ -1391,19 +1373,19 @@ export async function createHelpReply(input: {
     created_at: new Date().toISOString()
   };
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data, error } = await supabase
-        .from("help_replies")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data, error } = await db
+        .table("help_replies")
         .insert(reply)
         .select("*")
         .single();
 
       if (!error && data) {
         // 最初の回答が付いた時点で「対応中」に進める。
-        await supabase
-          .from("help_posts")
+        await db
+          .table("help_posts")
           .update({ status: "helping" })
           .eq("id", input.helpPostId)
           .eq("status", "open");
@@ -1432,22 +1414,22 @@ export async function acceptHelpReply(input: {
   helpPostId: string;
   replyId: string;
 }): Promise<void> {
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      await supabase
-        .from("help_replies")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      await db
+        .table("help_replies")
         .update({ is_accepted: false })
         .eq("help_post_id", input.helpPostId);
 
-      const { error } = await supabase
-        .from("help_replies")
+      const { error } = await db
+        .table("help_replies")
         .update({ is_accepted: true })
         .eq("id", input.replyId);
 
       if (!error) {
-        await supabase
-          .from("help_posts")
+        await db
+          .table("help_posts")
           .update({ status: "solved" })
           .eq("id", input.helpPostId);
         return;
@@ -1479,11 +1461,11 @@ export async function getHelpPostById(
   id: string,
   eventId?: string
 ): Promise<{ id: string; author_github: string | null; event_id: string } | null> {
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data: post, error: postError } = await supabase
-        .from("help_posts")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data: post, error: postError } = await db
+        .table("help_posts")
         .select("id,user_id,team_id")
         .eq("id", id)
         .maybeSingle();
@@ -1491,8 +1473,8 @@ export async function getHelpPostById(
       if (!post) return null;
 
       const [teamResult, userResult] = await Promise.all([
-        supabase.from("teams").select("event_id").eq("id", post.team_id).maybeSingle(),
-        supabase.from("users").select("github_username").eq("id", post.user_id).maybeSingle()
+        db.table("teams").select("event_id").eq("id", post.team_id).maybeSingle(),
+        db.table("users").select("github_username").eq("id", post.user_id).maybeSingle()
       ]);
       if (teamResult.error || userResult.error) {
         throw teamResult.error ?? userResult.error;
@@ -1536,10 +1518,10 @@ function makeJoinCode(): string {
 
 /** 指定イベント、または最後に作成したイベント。 */
 export async function getEvent(eventId?: string | null): Promise<HackEvent | null> {
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const query = supabase.from("events").select("*");
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const query = db.table("events").select("*");
       const { data, error } = eventId
         ? await query.eq("id", eventId).maybeSingle()
         : await query.order("created_at", { ascending: false }).limit(1).maybeSingle();
@@ -1550,7 +1532,7 @@ export async function getEvent(eventId?: string | null): Promise<HackEvent | nul
 
   const store = getMemoryStore();
   return eventId
-    ? store.events.find((event) => event.id === eventId) ?? null
+    ? store.events.find((event: any) => event.id === eventId) ?? null
     : store.event ?? store.events.at(-1) ?? null;
 }
 
@@ -1558,11 +1540,11 @@ export async function getEventByJoinCode(code: string | undefined): Promise<Hack
   const joinCode = code?.trim().toUpperCase();
   if (!joinCode) return null;
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data, error } = await supabase
-        .from("events")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data, error } = await db
+        .table("events")
         .select("*")
         .ilike("join_code", joinCode)
         .maybeSingle();
@@ -1572,7 +1554,7 @@ export async function getEventByJoinCode(code: string | undefined): Promise<Hack
   }
 
   return getMemoryStore().events.find(
-    (event) => event.join_code.toUpperCase() === joinCode
+    (event: any) => event.join_code.toUpperCase() === joinCode
   ) ?? null;
 }
 
@@ -1601,13 +1583,13 @@ export async function createEvent(input: {
     created_at: new Date().toISOString()
   };
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data, error } = await supabase.from("events").insert(event).select("*").single();
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data, error } = await db.table("events").insert(event).select("*").single();
       if (error || !data) throw error ?? new Error("イベントを作成できませんでした。");
-      const { data: ownerUser, error: ownerError } = await supabase
-        .from("users")
+      const { data: ownerUser, error: ownerError } = await db
+        .table("users")
         .upsert(
           {
             github_username: owner,
@@ -1621,7 +1603,7 @@ export async function createEvent(input: {
       if (ownerError || !ownerUser) {
         throw ownerError ?? new Error("主催者情報を保存できませんでした。");
       }
-      const { error: membershipError } = await supabase.from("event_members").upsert(
+      const { error: membershipError } = await db.table("event_members").upsert(
         {
           event_id: data.id,
           user_id: ownerUser.id,
@@ -1676,11 +1658,11 @@ export async function isEventOwner(input: {
 export async function getEventsOwnedBy(githubUsername: string | undefined): Promise<HackEvent[]> {
   const owner = githubUsername?.trim();
   if (!owner) return [];
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data, error } = await supabase
-        .from("events")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data, error } = await db
+        .table("events")
         .select("*")
         .ilike("owner_github_username", owner)
         .order("created_at", { ascending: false });
@@ -1689,7 +1671,7 @@ export async function getEventsOwnedBy(githubUsername: string | undefined): Prom
     }
   }
   return getMemoryStore().events
-    .filter((event) => event.owner_github_username.toLowerCase() === owner.toLowerCase())
+    .filter((event: any) => event.owner_github_username.toLowerCase() === owner.toLowerCase())
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
 }
 
@@ -1707,18 +1689,18 @@ export async function getEventMemberRole(input: {
 }): Promise<UserRole | null> {
   const login = input.githubUsername.trim();
   if (!login) return null;
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data: user, error: userError } = await supabase
-        .from("users")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data: user, error: userError } = await db
+        .table("users")
         .select("id")
         .ilike("github_username", login)
         .maybeSingle();
       if (userError) throw userError;
       if (!user) return null;
-      const { data: member, error: memberError } = await supabase
-        .from("event_members")
+      const { data: member, error: memberError } = await db
+        .table("event_members")
         .select("role")
         .eq("event_id", input.eventId)
         .eq("user_id", user.id)
@@ -1733,7 +1715,7 @@ export async function getEventMemberRole(input: {
   );
   if (!user) return null;
   return store.eventMembers.find(
-    (member) => member.event_id === input.eventId && member.user_id === user.id
+    (member: any) => member.event_id === input.eventId && member.user_id === user.id
   )?.role ?? null;
 }
 
@@ -1744,27 +1726,27 @@ export async function getMembershipInEvent(input: {
   const login = input.githubUsername.trim();
   if (!login) return null;
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data: user, error: userError } = await supabase
-        .from("users")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data: user, error: userError } = await db
+        .table("users")
         .select("id")
         .eq("github_username", login)
         .maybeSingle();
       if (userError) throw userError;
       if (!user) return null;
 
-      const { data: memberships, error: membershipError } = await supabase
-        .from("team_members")
+      const { data: memberships, error: membershipError } = await db
+        .table("team_members")
         .select("team_id")
         .eq("user_id", user.id);
       if (membershipError) throw membershipError;
-      const teamIds = [...new Set((memberships ?? []).map((membership) => membership.team_id))];
+      const teamIds = [...new Set((memberships ?? []).map((membership: any) => membership.team_id))];
       if (teamIds.length === 0) return null;
 
-      const { data: team, error: teamError } = await supabase
-        .from("teams")
+      const { data: team, error: teamError } = await db
+        .table("teams")
         .select("id,name")
         .eq("event_id", input.eventId)
         .in("id", teamIds)
@@ -1781,7 +1763,7 @@ export async function getMembershipInEvent(input: {
     (candidate) =>
       candidate.event_id === input.eventId &&
       store.teamMembers.some(
-        (membership) => membership.team_id === candidate.id && membership.user_id === user.id
+        (membership: any) => membership.team_id === candidate.id && membership.user_id === user.id
       )
   );
   return team ? { teamId: team.id, teamName: team.name } : null;
@@ -1791,41 +1773,41 @@ export async function getEventsJoinedBy(githubUsername: string | undefined): Pro
   const login = githubUsername?.trim();
   if (!login) return [];
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data: user, error: userError } = await supabase
-        .from("users")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data: user, error: userError } = await db
+        .table("users")
         .select("id")
         .ilike("github_username", login)
         .maybeSingle();
       if (userError) throw userError;
       if (!user) return [];
 
-      const { data: memberships, error: membershipError } = await supabase
-        .from("event_members")
+      const { data: memberships, error: membershipError } = await db
+        .table("event_members")
         .select("event_id,role")
         .eq("user_id", user.id);
       if (membershipError) throw membershipError;
-      const eventIds = [...new Set((memberships ?? []).map((membership) => membership.event_id))];
+      const eventIds = [...new Set((memberships ?? []).map((membership: any) => membership.event_id))];
       if (eventIds.length === 0) return [];
 
       const [eventsResult, teamMembershipsResult] = await Promise.all([
-        supabase.from("events").select("*").in("id", eventIds).order("created_at", { ascending: false }),
-        supabase.from("team_members").select("team_id").eq("user_id", user.id)
+        db.table("events").select("*").in("id", eventIds).order("created_at", { ascending: false }),
+        db.table("team_members").select("team_id").eq("user_id", user.id)
       ]);
       if (eventsResult.error || teamMembershipsResult.error) {
         throw eventsResult.error ?? teamMembershipsResult.error;
       }
-      const teamIds = (teamMembershipsResult.data ?? []).map((member) => member.team_id);
+      const teamIds = (teamMembershipsResult.data ?? []).map((member: any) => member.team_id);
       const teamsResult = teamIds.length
-        ? await supabase.from("teams").select("id,event_id,name,github_repo").in("id", teamIds)
+        ? await db.table("teams").select("id,event_id,name,github_repo").in("id", teamIds)
         : { data: [], error: null };
       if (teamsResult.error) throw teamsResult.error;
 
-      const roleByEvent = new Map((memberships ?? []).map((member) => [member.event_id, member.role as UserRole]));
-      const teamByEvent = new Map((teamsResult.data ?? []).map((team) => [team.event_id, team]));
-      return (eventsResult.data ?? []).flatMap((event) => {
+      const roleByEvent = new Map((memberships ?? []).map((member: any) => [member.event_id, member.role as UserRole]));
+      const teamByEvent = new Map<any, any>((teamsResult.data ?? []).map((team: any) => [team.event_id, team]));
+      return (eventsResult.data ?? []).flatMap((event: any) => {
         const role = roleByEvent.get(event.id);
         if (!role) return [];
         const team = teamByEvent.get(event.id);
@@ -1846,7 +1828,7 @@ export async function getEventsJoinedBy(githubUsername: string | undefined): Pro
     (candidate) => candidate.github_username.toLowerCase() === login.toLowerCase()
   );
   if (!user) return [];
-  return store.eventMembers.flatMap((membership) => {
+  return store.eventMembers.flatMap((membership: any) => {
     if (membership.user_id !== user.id) return [];
     const event = store.events.find((candidate) => candidate.id === membership.event_id);
     if (!event) return [];
@@ -1854,7 +1836,7 @@ export async function getEventsJoinedBy(githubUsername: string | undefined): Pro
       (candidate) =>
         candidate.event_id === membership.event_id &&
         store.teamMembers.some(
-          (member) => member.user_id === user.id && member.team_id === candidate.id
+          (member: any) => member.user_id === user.id && member.team_id === candidate.id
         )
     );
     if (membership.role === "participant" && !team) return [];
@@ -1884,19 +1866,19 @@ export async function leaveEventAsParticipant(input: {
     throw new Error("退出するイベントを選択してください。");
   }
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data: user, error: userError } = await supabase
-        .from("users")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data: user, error: userError } = await db
+        .table("users")
         .select("id")
         .ilike("github_username", githubUsername)
         .maybeSingle();
       if (userError) throw userError;
       if (!user) throw new Error("この参加者は見つかりません。");
 
-      const { data: eventMember, error: eventMemberError } = await supabase
-        .from("event_members")
+      const { data: eventMember, error: eventMemberError } = await db
+        .table("event_members")
         .select("role")
         .eq("event_id", eventId)
         .eq("user_id", user.id)
@@ -1906,24 +1888,24 @@ export async function leaveEventAsParticipant(input: {
         throw new Error("参加者として参加しているイベントだけ退出できます。");
       }
 
-      const { data: memberships, error: membershipsError } = await supabase
-        .from("team_members")
+      const { data: memberships, error: membershipsError } = await db
+        .table("team_members")
         .select("team_id")
         .eq("user_id", user.id);
       if (membershipsError) throw membershipsError;
 
-      const teamIds = [...new Set((memberships ?? []).map((membership) => membership.team_id))];
+      const teamIds = [...new Set((memberships ?? []).map((membership: any) => membership.team_id))];
       if (teamIds.length > 0) {
-        const { data: eventTeams, error: eventTeamsError } = await supabase
-          .from("teams")
+        const { data: eventTeams, error: eventTeamsError } = await db
+          .table("teams")
           .select("id")
           .eq("event_id", eventId)
           .in("id", teamIds);
         if (eventTeamsError) throw eventTeamsError;
-        const eventTeamIds = (eventTeams ?? []).map((team) => team.id);
+        const eventTeamIds = (eventTeams ?? []).map((team: any) => team.id);
         if (eventTeamIds.length > 0) {
-          const { error: removeTeamMembershipError } = await supabase
-            .from("team_members")
+          const { error: removeTeamMembershipError } = await db
+            .table("team_members")
             .delete()
             .eq("user_id", user.id)
             .in("team_id", eventTeamIds);
@@ -1931,8 +1913,8 @@ export async function leaveEventAsParticipant(input: {
         }
       }
 
-      const { error: removeEventMembershipError } = await supabase
-        .from("event_members")
+      const { error: removeEventMembershipError } = await db
+        .table("event_members")
         .delete()
         .eq("event_id", eventId)
         .eq("user_id", user.id);
@@ -1947,48 +1929,48 @@ export async function leaveEventAsParticipant(input: {
   );
   if (!user) throw new Error("この参加者は見つかりません。");
   const eventMember = store.eventMembers.find(
-    (member) => member.event_id === eventId && member.user_id === user.id
+    (member: any) => member.event_id === eventId && member.user_id === user.id
   );
   if (eventMember?.role !== "participant") {
     throw new Error("参加者として参加しているイベントだけ退出できます。");
   }
 
   const eventTeamIds = new Set(
-    store.teams.filter((team) => team.event_id === eventId).map((team) => team.id)
+    store.teams.filter((team: any) => team.event_id === eventId).map((team: any) => team.id)
   );
   store.teamMembers = store.teamMembers.filter(
-    (member) => member.user_id !== user.id || !eventTeamIds.has(member.team_id)
+    (member: any) => member.user_id !== user.id || !eventTeamIds.has(member.team_id)
   );
   store.eventMembers = store.eventMembers.filter(
-    (member) => !(member.event_id === eventId && member.user_id === user.id)
+    (member: any) => !(member.event_id === eventId && member.user_id === user.id)
   );
 }
 
 function resetMemoryEventData(store: MemoryStore, eventId: string) {
   const teamIds = new Set(
-    store.teams.filter((team) => team.event_id === eventId).map((team) => team.id)
+    store.teams.filter((team: any) => team.event_id === eventId).map((team: any) => team.id)
   );
   const postIds = new Set(
     store.helpPosts.filter((post) => teamIds.has(post.team_id)).map((post) => post.id)
   );
-  store.teams = store.teams.filter((team) => !teamIds.has(team.id));
-  store.teamMembers = store.teamMembers.filter((member) => !teamIds.has(member.team_id));
+  store.teams = store.teams.filter((team: any) => !teamIds.has(team.id));
+  store.teamMembers = store.teamMembers.filter((member: any) => !teamIds.has(member.team_id));
   store.teamInvites = store.teamInvites.filter((invite) => !teamIds.has(invite.team_id));
   store.activities = store.activities.filter((activity) => !teamIds.has(activity.team_id));
   store.helpPosts = store.helpPosts.filter((post) => !postIds.has(post.id));
   store.helpReplies = store.helpReplies.filter((reply) => !postIds.has(reply.help_post_id));
   store.messages = store.messages.filter((message) => message.event_id !== eventId);
   store.directMessages = store.directMessages.filter((message) => message.event_id !== eventId);
-  store.eventMembers = store.eventMembers.filter((member) => member.event_id !== eventId);
+  store.eventMembers = store.eventMembers.filter((member: any) => member.event_id !== eventId);
 }
 
-async function resetSupabaseEventData(
-  supabase: NonNullable<ReturnType<typeof createServerSupabaseClient>>,
+async function resetPostgresEventData(
+  db: NonNullable<ReturnType<typeof getPostgresStore>>,
   eventId: string
 ) {
   // teamsの削除は外部キーのcascadeで、チームに紐づく履歴もまとめて初期化する。
-  const { error } = await supabase
-    .from("teams")
+  const { error } = await db
+    .table("teams")
     .delete()
     .eq("event_id", eventId);
   if (error) throw error;
@@ -2012,12 +1994,12 @@ export async function saveEvent(input: {
       ? normalizeEventSchedule(input)
       : { startsAt: existing?.starts_at ?? null, endsAt: existing?.ends_at ?? null };
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
       if (existing) {
-        const { data, error } = await supabase
-          .from("events")
+        const { data, error } = await db
+          .table("events")
           .update({ name, join_code: joinCode, starts_at: schedule.startsAt, ends_at: schedule.endsAt })
           .eq("id", existing.id)
           .select("*")
@@ -2034,8 +2016,8 @@ export async function saveEvent(input: {
           ends_at: schedule.endsAt,
           created_at: new Date().toISOString()
         };
-        const { data, error } = await supabase
-          .from("events")
+        const { data, error } = await db
+          .table("events")
           .insert(event)
           .select("*")
           .single();
@@ -2057,7 +2039,7 @@ export async function saveEvent(input: {
     score_config: existing?.score_config,
     created_at: existing?.created_at ?? new Date().toISOString()
   };
-  const existingIndex = store.events.findIndex((event) => event.id === savedEvent.id);
+  const existingIndex = store.events.findIndex((event: any) => event.id === savedEvent.id);
   if (existingIndex >= 0) store.events[existingIndex] = savedEvent;
   else store.events.push(savedEvent);
   store.event = savedEvent;
@@ -2106,22 +2088,22 @@ export async function recalculateScores(config: ScoreConfig, eventId: string): P
     return nextDelta;
   };
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data: teamRows, error: teamsError } = await supabase
-        .from("teams")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data: teamRows, error: teamsError } = await db
+        .table("teams")
         .select("id")
         .eq("event_id", eventId);
       if (teamsError) throw teamsError;
 
-      const teamIds = ((teamRows ?? []) as { id: string }[]).map((team) => team.id);
+      const teamIds = ((teamRows ?? []) as { id: string }[]).map((team: any) => team.id);
       if (teamIds.length === 0) {
         return { updatedActivities: 0, updatedTeams: 0 };
       }
 
-      const { data, error } = await supabase
-        .from("activities")
+      const { data, error } = await db
+        .table("activities")
         .select("id,team_id,type,score_delta,metadata")
         .in("team_id", teamIds)
         .limit(10000);
@@ -2139,8 +2121,8 @@ export async function recalculateScores(config: ScoreConfig, eventId: string): P
 
       // 点数が変わった行だけを書き戻す。
       for (const row of changed) {
-        const { error: updateError } = await supabase
-          .from("activities")
+        const { error: updateError } = await db
+          .table("activities")
           .update({ score_delta: row.score_delta })
           .eq("id", row.id);
         if (updateError) throw updateError;
@@ -2149,8 +2131,8 @@ export async function recalculateScores(config: ScoreConfig, eventId: string): P
 
       for (const team of (teamRows ?? []) as { id: string }[]) {
         const bucket = totals.get(team.id) ?? { score: 0, commits: 0 };
-        const { error: updateError } = await supabase
-          .from("teams")
+        const { error: updateError } = await db
+          .table("teams")
           .update({
             score: bucket.score,
             commit_count: bucket.commits,
@@ -2166,7 +2148,7 @@ export async function recalculateScores(config: ScoreConfig, eventId: string): P
 
   const store = getMemoryStore();
   const eventTeamIds = new Set(
-    store.teams.filter((team) => team.event_id === eventId).map((team) => team.id)
+    store.teams.filter((team: any) => team.event_id === eventId).map((team: any) => team.id)
   );
 
   for (const activity of store.activities.filter((item) => eventTeamIds.has(item.team_id))) {
@@ -2177,7 +2159,7 @@ export async function recalculateScores(config: ScoreConfig, eventId: string): P
     }
   }
 
-  const eventTeams = store.teams.filter((team) => team.event_id === eventId);
+  const eventTeams = store.teams.filter((team: any) => team.event_id === eventId);
   for (const team of eventTeams) {
     const bucket = totals.get(team.id) ?? { score: 0, commits: 0 };
     team.score = bucket.score;
@@ -2201,17 +2183,17 @@ export async function saveScoreConfig(input: unknown, eventId?: string): Promise
     throw new Error("先にイベントを作成してください。");
   }
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { error } = await supabase
-        .from("events")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { error } = await db
+        .table("events")
         .update({ score_config: config })
         .eq("id", event.id);
       if (error) {
         if ((error.message ?? "").includes("score_config")) {
           throw new Error(
-            "配点を保存する列がまだありません。Supabaseで supabase/schema.sql を実行してください。"
+            "配点を保存する列がまだありません。Postgresで db/schema.sql を実行してください。"
           );
         }
         throw error;
@@ -2242,13 +2224,13 @@ export async function deleteEvent(eventId?: string): Promise<void> {
     throw new Error("削除するイベントがありません。");
   }
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
       // 先にチームを消す。所属・部屋番号・活動履歴はcascadeで一緒に消える。
-      await resetSupabaseEventData(supabase, event.id);
+      await resetPostgresEventData(db, event.id);
 
-      const { error } = await supabase.from("events").delete().eq("id", event.id);
+      const { error } = await db.table("events").delete().eq("id", event.id);
       if (error) throw error;
 
       // チームに紐づかない記録（お知らせ、メンター登録）も残さない。
@@ -2279,17 +2261,17 @@ export async function getEventIdForAccessCode(code: string): Promise<string | un
   if (event) return event.id;
 
   const normalized = code.trim().toUpperCase();
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data: invite } = await supabase
-        .from("team_invites")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data: invite } = await db
+        .table("team_invites")
         .select("team_id")
         .eq("code", normalized)
         .maybeSingle();
       if (!invite) return undefined;
-      const { data: team } = await supabase
-        .from("teams")
+      const { data: team } = await db
+        .table("teams")
         .select("event_id")
         .eq("id", invite.team_id)
         .maybeSingle();
@@ -2299,7 +2281,7 @@ export async function getEventIdForAccessCode(code: string): Promise<string | un
 
   const invite = getMemoryStore().teamInvites.find((item) => item.code === normalized);
   return invite
-    ? getMemoryStore().teams.find((team) => team.id === invite.team_id)?.event_id
+    ? getMemoryStore().teams.find((team: any) => team.id === invite.team_id)?.event_id
     : undefined;
 }
 
@@ -2336,11 +2318,11 @@ export async function joinMentorByCode(input: {
     githubUsername
   }) ? "admin" : "mentor";
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data, error } = await supabase
-        .from("users")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data, error } = await db
+        .table("users")
         .upsert(
           {
             github_username: githubUsername,
@@ -2355,7 +2337,7 @@ export async function joinMentorByCode(input: {
 
       if (error) throw error;
 
-      const { error: membershipError } = await supabase.from("event_members").upsert(
+      const { error: membershipError } = await db.table("event_members").upsert(
         {
           event_id: eventId,
           user_id: data.id,
@@ -2400,7 +2382,7 @@ export async function joinMentorByCode(input: {
   }
 
   const membership = store.eventMembers.find(
-    (member) => member.event_id === eventId && member.user_id === user.id
+    (member: any) => member.event_id === eventId && member.user_id === user.id
   );
   if (membership) {
     membership.role = role;
@@ -2431,11 +2413,11 @@ export async function createTeamByName(input: { name: string; eventId?: string }
   if (!eventId) throw new Error("イベントを選択してください。");
   if (!name) throw new Error("チーム名を入力してください。");
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data: existing } = await supabase
-        .from("teams")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data: existing } = await db
+        .table("teams")
         .select("*")
         .eq("name", name)
         .eq("event_id", eventId)
@@ -2452,14 +2434,14 @@ export async function createTeamByName(input: { name: string; eventId?: string }
         house_level: 1,
         created_at: new Date().toISOString()
       };
-      const { data, error } = await supabase.from("teams").insert(team).select("*").single();
+      const { data, error } = await db.table("teams").insert(team).select("*").single();
       if (error) throw error;
       return normalizeTeam(data as Team);
     }
   }
 
   const store = getMemoryStore();
-  if (store.teams.some((team) => team.event_id === eventId && team.name === name)) {
+  if (store.teams.some((team: any) => team.event_id === eventId && team.name === name)) {
     throw new Error("同じ名前のチームがすでにあります。");
   }
 
@@ -2484,19 +2466,19 @@ export async function setTeamRepo(input: {
 }): Promise<Team> {
   const githubRepo = normalizeGitHubRepo(input.githubRepo);
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data: target, error: targetError } = await supabase
-        .from("teams")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data: target, error: targetError } = await db
+        .table("teams")
         .select("id,event_id")
         .eq("id", input.teamId)
         .maybeSingle();
       if (targetError) throw targetError;
       if (!target) throw new Error("チームが見つかりません。");
 
-      const { data: taken } = await supabase
-        .from("teams")
+      const { data: taken } = await db
+        .table("teams")
         .select("id")
         .ilike("github_repo", githubRepo)
         .eq("event_id", target.event_id)
@@ -2505,8 +2487,8 @@ export async function setTeamRepo(input: {
         throw new Error("そのリポジトリは別のチームが使っています。");
       }
 
-      const { data, error } = await supabase
-        .from("teams")
+      const { data, error } = await db
+        .table("teams")
         .update({ github_repo: githubRepo })
         .eq("id", input.teamId)
         .select("*")
@@ -2545,19 +2527,19 @@ export async function updateTeam(input: {
 
   if (!name) throw new Error("チーム名を入力してください。");
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data: target, error: targetError } = await supabase
-        .from("teams")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data: target, error: targetError } = await db
+        .table("teams")
         .select("id,event_id")
         .eq("id", input.teamId)
         .maybeSingle();
       if (targetError) throw targetError;
       if (!target) throw new Error("チームが見つかりません。");
 
-      const { data: duplicateName } = await supabase
-        .from("teams")
+      const { data: duplicateName } = await db
+        .table("teams")
         .select("id")
         .ilike("name", name)
         .eq("event_id", target.event_id)
@@ -2566,8 +2548,8 @@ export async function updateTeam(input: {
       if (duplicateName) throw new Error("同じ名前のチームがすでにあります。");
 
       if (githubRepo) {
-        const { data: duplicateRepo } = await supabase
-          .from("teams")
+        const { data: duplicateRepo } = await db
+          .table("teams")
           .select("id")
           .ilike("github_repo", githubRepo)
           .eq("event_id", target.event_id)
@@ -2576,8 +2558,8 @@ export async function updateTeam(input: {
         if (duplicateRepo) throw new Error("そのリポジトリは別のチームが使っています。");
       }
 
-      const { data, error } = await supabase
-        .from("teams")
+      const { data, error } = await db
+        .table("teams")
         .update({ name, github_repo: githubRepo })
         .eq("id", input.teamId)
         .select("*")
@@ -2624,7 +2606,7 @@ function makeInviteCode(teamName: string): string {
 }
 
 function inviteViews(teams: Team[], invites: TeamInvite[]): TeamInviteView[] {
-  const teamsById = new Map(teams.map((team) => [team.id, normalizeTeam(team)]));
+  const teamsById = new Map(teams.map((team: any) => [team.id, normalizeTeam(team)]));
 
   return invites
     .flatMap((invite) => {
@@ -2640,15 +2622,15 @@ function inviteViews(teams: Team[], invites: TeamInvite[]): TeamInviteView[] {
 }
 
 export async function getTeamInvites(eventId?: string | null): Promise<TeamInviteView[]> {
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const teamsQuery = supabase.from("teams").select("*");
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const teamsQuery = db.table("teams").select("*");
       if (eventId) teamsQuery.eq("event_id", eventId);
       const [teamsResult, invitesResult] = await Promise.all([
         teamsQuery,
-        supabase
-          .from("team_invites")
+        db
+          .table("team_invites")
           .select("*")
           .order("created_at", { ascending: false })
       ]);
@@ -2664,31 +2646,31 @@ export async function getTeamInvites(eventId?: string | null): Promise<TeamInvit
 
   const store = getMemoryStore();
   return inviteViews(
-    eventId ? store.teams.filter((team) => team.event_id === eventId) : store.teams,
+    eventId ? store.teams.filter((team: any) => team.event_id === eventId) : store.teams,
     store.teamInvites
   );
 }
 
 export async function getTeamById(teamId: string): Promise<Team | null> {
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data, error } = await supabase.from("teams").select("*").eq("id", teamId).maybeSingle();
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data, error } = await db.table("teams").select("*").eq("id", teamId).maybeSingle();
       if (error) throw error;
       return (data as Team | null) ?? null;
     }
   }
-  return getMemoryStore().teams.find((team) => team.id === teamId) ?? null;
+  return getMemoryStore().teams.find((team: any) => team.id === teamId) ?? null;
 }
 
 /** GitHubの実コミットSHAで照合した合計を、チーム表示用に保存する。 */
 export async function updateTeamCommitCount(teamId: string, commitCount: number): Promise<Team | null> {
   const normalizedCount = Math.max(0, Math.floor(commitCount));
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data, error } = await supabase
-        .from("teams")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data, error } = await db
+        .table("teams")
         .update({ commit_count: normalizedCount })
         .eq("id", teamId)
         .select("*")
@@ -2717,8 +2699,8 @@ export async function createTeamInvite(input: {
     throw new Error("Team name and GitHub repository are required.");
   }
 
-  if (isSupabaseConfigured()) {
-    const team = await findOrCreateSupabaseTeam(githubRepo, teamName, input.eventId);
+  if (isDatabaseConfigured()) {
+    const team = await findOrCreatePostgresTeam(githubRepo, teamName, input.eventId);
     if (team) {
       return createTeamInviteForTeam({ teamId: team.id, invitedBy });
     }
@@ -2735,11 +2717,11 @@ export async function createTeamInviteForTeam(input: {
 }): Promise<TeamInviteView> {
   const invitedBy = input.invitedBy.trim() || "HackRadar Admin";
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data: team, error: teamError } = await supabase
-        .from("teams")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data: team, error: teamError } = await db
+        .table("teams")
         .select("*")
         .eq("id", input.teamId)
         .single();
@@ -2752,8 +2734,8 @@ export async function createTeamInviteForTeam(input: {
         team_id: normalizedTeam.id,
         invited_by: invitedBy
       };
-      const { data, error } = await supabase
-        .from("team_invites")
+      const { data, error } = await db
+        .table("team_invites")
         .insert(invite)
         .select("*")
         .single();
@@ -2797,11 +2779,11 @@ export async function isTeamMember(input: {
   const githubUsername = input.githubUsername?.trim();
   if (!githubUsername) return false;
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data: user, error: userError } = await supabase
-        .from("users")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data: user, error: userError } = await db
+        .table("users")
         .select("id")
         .eq("github_username", githubUsername)
         .maybeSingle();
@@ -2809,8 +2791,8 @@ export async function isTeamMember(input: {
       if (userError) throw userError;
       if (!user) return false;
 
-      const { data: membership, error: memberError } = await supabase
-        .from("team_members")
+      const { data: membership, error: memberError } = await db
+        .table("team_members")
         .select("id")
         .eq("team_id", input.teamId)
         .eq("user_id", user.id)
@@ -2828,7 +2810,7 @@ export async function isTeamMember(input: {
   return Boolean(
     user &&
       store.teamMembers.some(
-        (member) => member.team_id === input.teamId && member.user_id === user.id
+        (member: any) => member.team_id === input.teamId && member.user_id === user.id
       )
   );
 }
@@ -2851,11 +2833,11 @@ export async function removeTeamMember(input: {
     throw new Error("外すメンバーを指定してください。");
   }
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data: user, error: userError } = await supabase
-        .from("users")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data: user, error: userError } = await db
+        .table("users")
         .select("id")
         .eq("github_username", githubUsername)
         .maybeSingle();
@@ -2863,8 +2845,8 @@ export async function removeTeamMember(input: {
       if (userError) throw userError;
       if (!user) throw new Error("このアカウントは登録されていません。");
 
-      const { error } = await supabase
-        .from("team_members")
+      const { error } = await db
+        .table("team_members")
         .delete()
         .eq("team_id", input.teamId)
         .eq("user_id", user.id);
@@ -2881,7 +2863,7 @@ export async function removeTeamMember(input: {
   if (!user) throw new Error("このアカウントは登録されていません。");
 
   store.teamMembers = store.teamMembers.filter(
-    (member) => !(member.team_id === input.teamId && member.user_id === user.id)
+    (member: any) => !(member.team_id === input.teamId && member.user_id === user.id)
   );
 }
 
@@ -2902,11 +2884,11 @@ export async function moveTeamMember(input: {
 
   const githubUsername = input.githubUsername.trim();
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data: team, error: teamError } = await supabase
-        .from("teams")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data: team, error: teamError } = await db
+        .table("teams")
         .select("id")
         .eq("id", input.toTeamId)
         .maybeSingle();
@@ -2914,8 +2896,8 @@ export async function moveTeamMember(input: {
       if (teamError) throw teamError;
       if (!team) throw new Error("移動先のチームが見つかりません。");
 
-      const { data: user, error: userError } = await supabase
-        .from("users")
+      const { data: user, error: userError } = await db
+        .table("users")
         .select("id")
         .eq("github_username", githubUsername)
         .maybeSingle();
@@ -2923,8 +2905,8 @@ export async function moveTeamMember(input: {
       if (userError) throw userError;
       if (!user) throw new Error("このアカウントは登録されていません。");
 
-      const { error } = await supabase
-        .from("team_members")
+      const { error } = await db
+        .table("team_members")
         .upsert(
           { team_id: input.toTeamId, user_id: user.id },
           { onConflict: "team_id,user_id" }
@@ -2945,7 +2927,7 @@ export async function moveTeamMember(input: {
   if (!user) throw new Error("このアカウントは登録されていません。");
 
   const alreadyThere = store.teamMembers.some(
-    (member) => member.team_id === input.toTeamId && member.user_id === user.id
+    (member: any) => member.team_id === input.toTeamId && member.user_id === user.id
   );
   if (!alreadyThere) {
     store.teamMembers.push({
@@ -2964,19 +2946,19 @@ export async function moveTeamMember(input: {
  * 呼び出し側で確認を取ること。
  */
 export async function deleteTeam(teamId: string): Promise<void> {
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
       // team_members / team_invites / activities は外部キーのcascadeで消える。
-      const { error } = await supabase.from("teams").delete().eq("id", teamId);
+      const { error } = await db.table("teams").delete().eq("id", teamId);
       if (error) throw error;
       return;
     }
   }
 
   const store = getMemoryStore();
-  store.teams = store.teams.filter((team) => team.id !== teamId);
-  store.teamMembers = store.teamMembers.filter((member) => member.team_id !== teamId);
+  store.teams = store.teams.filter((team: any) => team.id !== teamId);
+  store.teamMembers = store.teamMembers.filter((member: any) => member.team_id !== teamId);
   store.teamInvites = store.teamInvites.filter((invite) => invite.team_id !== teamId);
   store.activities = store.activities.filter((activity) => activity.team_id !== teamId);
   store.helpPosts = store.helpPosts.filter((post) => post.team_id !== teamId);
@@ -2999,11 +2981,11 @@ export async function joinTeamWithInvite(input: {
     throw new Error("招待コードと名前を入力してください。");
   }
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data: invite, error: inviteError } = await supabase
-        .from("team_invites")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data: invite, error: inviteError } = await db
+        .table("team_invites")
         .select("*")
         .eq("code", code)
         .maybeSingle();
@@ -3011,8 +2993,8 @@ export async function joinTeamWithInvite(input: {
       if (inviteError) throw inviteError;
       if (!invite) throw new Error("招待コードが見つかりません。運営から配られたコードを確認してください。");
 
-      const { data: team, error: teamError } = await supabase
-        .from("teams")
+      const { data: team, error: teamError } = await db
+        .table("teams")
         .select("*")
         .eq("id", invite.team_id)
         .single();
@@ -3023,8 +3005,8 @@ export async function joinTeamWithInvite(input: {
       }
 
       const role = input.role ?? "participant";
-      const { data: existingUser, error: existingUserError } = await supabase
-        .from("users")
+      const { data: existingUser, error: existingUserError } = await db
+        .table("users")
         .select("id")
         .eq("github_username", githubUsername)
         .maybeSingle();
@@ -3032,24 +3014,24 @@ export async function joinTeamWithInvite(input: {
       if (existingUserError) throw existingUserError;
 
       if (existingUser) {
-        const { data: existingMemberships, error: membershipError } = await supabase
-          .from("team_members")
+        const { data: existingMemberships, error: membershipError } = await db
+          .table("team_members")
           .select("team_id")
           .eq("user_id", existingUser.id);
 
         if (membershipError) throw membershipError;
-        const memberTeamIds = [...new Set((existingMemberships ?? []).map((membership) => membership.team_id))];
+        const memberTeamIds = [...new Set((existingMemberships ?? []).map((membership: any) => membership.team_id))];
         let belongsToAnotherTeam = false;
 
         if (memberTeamIds.length > 0) {
-          const { data: teamsInThisEvent, error: eventTeamError } = await supabase
-            .from("teams")
+          const { data: teamsInThisEvent, error: eventTeamError } = await db
+            .table("teams")
             .select("id")
             .eq("event_id", (team as Team).event_id)
             .in("id", memberTeamIds);
           if (eventTeamError) throw eventTeamError;
           belongsToAnotherTeam = (teamsInThisEvent ?? []).some(
-            (memberTeam) => memberTeam.id !== team.id
+            (memberTeam: any) => memberTeam.id !== team.id
           );
         }
 
@@ -3060,8 +3042,8 @@ export async function joinTeamWithInvite(input: {
         }
       }
 
-      const { data: user, error: userError } = await supabase
-        .from("users")
+      const { data: user, error: userError } = await db
+        .table("users")
         .upsert(
           {
             github_username: githubUsername,
@@ -3075,7 +3057,7 @@ export async function joinTeamWithInvite(input: {
 
       if (userError) throw userError;
 
-      const { error: memberError } = await supabase.from("team_members").upsert(
+      const { error: memberError } = await db.table("team_members").upsert(
         {
           team_id: invite.team_id,
           user_id: user.id
@@ -3085,7 +3067,7 @@ export async function joinTeamWithInvite(input: {
 
       if (memberError) throw memberError;
 
-      const { error: eventMemberError } = await supabase.from("event_members").upsert(
+      const { error: eventMemberError } = await db.table("event_members").upsert(
         {
           event_id: (team as Team).event_id,
           user_id: user.id,
@@ -3129,10 +3111,10 @@ export async function joinTeamWithInvite(input: {
 
   if (user) {
     const userId = user.id;
-    const belongsToAnotherTeam = store.teamMembers.some((member) => {
+    const belongsToAnotherTeam = store.teamMembers.some((member: any) => {
       if (member.user_id !== userId || member.team_id === team.id) return false;
       return store.teams.some(
-        (memberTeam) => memberTeam.id === member.team_id && memberTeam.event_id === team.event_id
+        (memberTeam: any) => memberTeam.id === member.team_id && memberTeam.event_id === team.event_id
       );
     });
 
@@ -3157,7 +3139,7 @@ export async function joinTeamWithInvite(input: {
 
   if (
     !store.teamMembers.some(
-      (member) => member.team_id === team.id && member.user_id === user.id
+      (member: any) => member.team_id === team.id && member.user_id === user.id
     )
   ) {
     store.teamMembers.push({
@@ -3168,7 +3150,7 @@ export async function joinTeamWithInvite(input: {
   }
 
   const eventMember = store.eventMembers.find(
-    (member) => member.event_id === team.event_id && member.user_id === user.id
+    (member: any) => member.event_id === team.event_id && member.user_id === user.id
   );
   if (eventMember) {
     eventMember.role = role;
@@ -3208,11 +3190,11 @@ export async function joinTeamByName(input: {
     throw new Error("Team name and display name are required.");
   }
 
-  if (isSupabaseConfigured()) {
-    const supabase = createServerSupabaseClient();
-    if (supabase) {
-      const { data: team, error: teamError } = await supabase
-        .from("teams")
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (db) {
+      const { data: team, error: teamError } = await db
+        .table("teams")
         .select("*")
         .eq("name", teamName)
         .maybeSingle();
@@ -3220,8 +3202,8 @@ export async function joinTeamByName(input: {
       if (teamError) throw teamError;
       if (!team) throw new Error("チームが見つかりません。運営に確認してください。");
 
-      const { data: user, error: userError } = await supabase
-        .from("users")
+      const { data: user, error: userError } = await db
+        .table("users")
         .upsert(
           {
             github_username: githubUsername,
@@ -3235,7 +3217,7 @@ export async function joinTeamByName(input: {
 
       if (userError) throw userError;
 
-      const { error: memberError } = await supabase.from("team_members").upsert(
+      const { error: memberError } = await db.table("team_members").upsert(
         {
           team_id: team.id,
           user_id: user.id
@@ -3245,7 +3227,7 @@ export async function joinTeamByName(input: {
 
       if (memberError) throw memberError;
 
-      const { error: eventMemberError } = await supabase.from("event_members").upsert(
+      const { error: eventMemberError } = await db.table("event_members").upsert(
         {
           event_id: team.event_id,
           user_id: user.id,
@@ -3293,7 +3275,7 @@ export async function joinTeamByName(input: {
 
   if (
     !store.teamMembers.some(
-      (member) => member.team_id === team.id && member.user_id === user.id
+      (member: any) => member.team_id === team.id && member.user_id === user.id
     )
   ) {
     store.teamMembers.push({
@@ -3304,7 +3286,7 @@ export async function joinTeamByName(input: {
   }
 
   const eventMember = store.eventMembers.find(
-    (member) => member.event_id === team.event_id && member.user_id === user.id
+    (member: any) => member.event_id === team.event_id && member.user_id === user.id
   );
   if (eventMember) {
     eventMember.role = role;

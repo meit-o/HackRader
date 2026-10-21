@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createBrowserSupabaseClient } from "@/lib/supabase-browser";
 import type {
   ActivityType,
   ChatChannel,
@@ -9,17 +8,12 @@ import type {
   HackVerseState
 } from "@/lib/types";
 
-type RealtimeStatus = "fallback-polling" | "connecting" | "connected" | "error";
-
 export function useHackVerseState(initialState: HackVerseState) {
   const [state, setState] = useState(initialState);
   const [isRefreshing, setIsRefreshing] = useState(false);
   // 初回表示では光らせない。あとから届いたイベントだけをハイライトする。
   const [lastActivityId, setLastActivityId] = useState("");
   const newestActivityIdRef = useRef(initialState.activities[0]?.id ?? "");
-  const [realtimeStatus, setRealtimeStatus] =
-    useState<RealtimeStatus>("connecting");
-
   const refresh = useCallback(async () => {
     setIsRefreshing(true);
     try {
@@ -42,57 +36,8 @@ export function useHackVerseState(initialState: HackVerseState) {
   }, []);
 
   useEffect(() => {
-    const supabase = createBrowserSupabaseClient();
-
-    if (!supabase) {
-      const markFallback = window.setTimeout(() => setRealtimeStatus("fallback-polling"), 0);
-      const interval = window.setInterval(refresh, 2200);
-      return () => {
-        window.clearTimeout(markFallback);
-        window.clearInterval(interval);
-      };
-    }
-
-    let refreshTimeout: number | undefined;
-
-    const scheduleRefresh = () => {
-      if (refreshTimeout) {
-        window.clearTimeout(refreshTimeout);
-      }
-
-      refreshTimeout = window.setTimeout(() => {
-        void refresh();
-      }, 160);
-    };
-
-    const channel = supabase
-      .channel("hackverse-lobby")
-      .on(
-        "postgres_changes",
-        // 本文や個人情報を含むテーブルをanonへ公開せず、時刻だけの通知を受け取る。
-        { event: "UPDATE", schema: "public", table: "app_change_signal" },
-        scheduleRefresh
-      )
-      .subscribe((status: string) => {
-        if (status === "SUBSCRIBED") {
-          setRealtimeStatus("connected");
-          return;
-        }
-
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          setRealtimeStatus("error");
-        }
-      });
-
-    const safetyPoll = window.setInterval(refresh, 12000);
-
-    return () => {
-      if (refreshTimeout) {
-        window.clearTimeout(refreshTimeout);
-      }
-      window.clearInterval(safetyPoll);
-      void supabase.removeChannel(channel);
-    };
+    const interval = window.setInterval(() => void refresh(), 2200);
+    return () => window.clearInterval(interval);
   }, [refresh]);
 
   const triggerDemoEvent = useCallback(
@@ -206,7 +151,6 @@ export function useHackVerseState(initialState: HackVerseState) {
     () => ({
       state,
       isRefreshing,
-      realtimeStatus,
       lastActivityId,
       refresh,
       triggerDemoEvent,
@@ -218,7 +162,6 @@ export function useHackVerseState(initialState: HackVerseState) {
     [
       state,
       isRefreshing,
-      realtimeStatus,
       lastActivityId,
       refresh,
       triggerDemoEvent,

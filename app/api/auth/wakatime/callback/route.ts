@@ -51,7 +51,7 @@ export async function GET(request: Request) {
     response.cookies.delete(WAKATIME_STATE_COOKIE);
     return response;
   } catch (error) {
-    // トークンや認可コードを含めず、運営がVercel Runtime Logsで設定不備を切り分けられるようにする。
+    // トークンや認可コードを含めず、運営がRender application logsで設定不備を切り分けられるようにする。
     console.error("WakaTime token exchange failed", {
       message: error instanceof Error ? error.message : "Unknown error"
     });

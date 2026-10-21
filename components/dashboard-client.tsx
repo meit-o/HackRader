@@ -16,7 +16,7 @@ import { HelpComposer } from "@/components/help-composer";
 import { MyTeamCard } from "@/components/my-team-card";
 import { RankingPanel } from "@/components/ranking-panel";
 import { StaffChat } from "@/components/staff-chat";
-import { RealtimeStatusBadge } from "@/components/realtime-status-badge";
+import { PollingStatusBadge } from "@/components/polling-status-badge";
 import { TeamRepoSetup } from "@/components/team-repo-setup";
 import { TechStackPanel } from "@/components/tech-stack-panel";
 import { WakaTimePanel } from "@/components/wakatime-panel";
@@ -47,7 +47,6 @@ export function DashboardClient({
   const {
     state,
     isRefreshing,
-    realtimeStatus,
     lastActivityId,
     refresh,
     triggerDemoEvent,
@@ -222,7 +221,7 @@ export function DashboardClient({
               : "GitHubにプッシュすると、この画面が自動で更新されます。"}
           </p>
         </div>
-        <RealtimeStatusBadge status={realtimeStatus} isRefreshing={isRefreshing} />
+        <PollingStatusBadge isRefreshing={isRefreshing} />
         {demoEnabled && (isAdmin || !viewer && !sessionViewer) && (
           <DemoControls teams={state.teams} onTrigger={triggerDemoEvent} />
         )}

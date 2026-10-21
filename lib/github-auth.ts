@@ -4,7 +4,7 @@ import type { UserRole } from "@/lib/types";
 /**
  * GitHub OAuth（自前実装）。
  * セッションは HS256 で署名したJWTを httpOnly cookie に入れる。DBを必須にしないので、
- * Supabase未設定でもログインしてデモできる状態を保てる。
+ * PostgreSQL未設定でもログインしてデモできる状態を保てる。
  */
 
 export const SESSION_COOKIE = "hackverse-auth";

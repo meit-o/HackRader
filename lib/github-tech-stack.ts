@@ -53,7 +53,7 @@ const packageTechnologies: Array<[string, string, TechStackCategory]> = [
   ["@nestjs/core", "NestJS", "backend"],
   ["fastify", "Fastify", "backend"],
   ["hono", "Hono", "backend"],
-  ["@supabase/supabase-js", "Supabase (PostgreSQL)", "database"],
+  ["typeorm", "TypeORM", "database"],
   ["prisma", "Prisma (ORM)", "database"],
   ["@prisma/client", "Prisma (ORM)", "database"],
   ["drizzle-orm", "Drizzle (ORM)", "database"],

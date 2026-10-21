@@ -9,12 +9,13 @@ describe("framework detection", () => {
           dependencies: {
             next: "16.0.0",
             react: "19.0.0",
-            "@supabase/supabase-js": "2.0.0"
+            typeorm: "0.3.28",
+            pg: "8.16.3"
           },
           devDependencies: { tailwindcss: "3.0.0" }
         })
       })
-    ).toEqual(["Next.js", "React", "Supabase (PostgreSQL)", "Tailwind CSS"]);
+    ).toEqual(["Next.js", "PostgreSQL", "React", "Tailwind CSS", "TypeORM"]);
   });
 
   it("detects ecosystems from non-JavaScript manifest files", () => {

@@ -1,13 +1,13 @@
 /**
- * 運営から集計までの流れを、GitHubもSupabaseも使わずに通しで動かす。
+ * 運営から集計までの流れを、GitHubもPostgreSQLも使わずに通しで動かす。
  *
  *   npm run verify:flow
  *
- * lib/store.ts はSupabase未設定だとメモリ上のストアで動くので、
+ * lib/store.ts はPostgreSQL未設定だとメモリ上のストアで動くので、
  * そこへGitHubと同じ形のWebhookペイロードを流し込んで結果を確かめる。
  * GitHubアカウントが1つしか無くても、複数人での動きを再現できる。
  *
- * ここで見ているのは中身の計算だけで、画面の見た目やSupabaseとの
+ * ここで見ているのは中身の計算だけで、画面の見た目やPostgreSQLとの
  * やり取りは含まない。本番の確認は実際のデプロイ先で行う。
  */
 import { createHmac } from "node:crypto";

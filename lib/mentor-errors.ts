@@ -1,7 +1,7 @@
 const MIGRATION_HINT =
-  "Supabaseのメンター用更新がまだ適用されていません。Supabase SQL Editorで supabase/mentor-migration.sql を1回実行してから、もう一度お試しください。";
+  "PostgreSQLのメンター用更新がまだ適用されていません。PostgreSQL SQL Editorで postgres/mentor-migration.sql を1回実行してから、もう一度お試しください。";
 
-/** Supabaseの低レベルエラーを、登録画面で次に取る行動が分かる文に変換する。 */
+/** PostgreSQLの低レベルエラーを、登録画面で次に取る行動が分かる文に変換する。 */
 export function getMentorJoinErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error ?? "");
   const normalized = message.toLowerCase();

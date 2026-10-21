@@ -205,7 +205,7 @@ export function WakaTimePanel({ viewerLogin }: { viewerLogin: string | null }) {
       <section className="rounded-2xl border border-hot/25 bg-surface p-5 shadow-card sm:p-6">
         <h2 className="font-bold text-ink">開発時間</h2>
         <p className="mt-1 text-sm leading-6 text-muted">
-          {error ?? "WakaTimeの作業時間を取得できませんでした。Supabaseスキーマと連携設定を確認してください。"}
+          {error ?? "WakaTimeの作業時間を取得できませんでした。PostgreSQLスキーマと連携設定を確認してください。"}
         </p>
         <button
           type="button"

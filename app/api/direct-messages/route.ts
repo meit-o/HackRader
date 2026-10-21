@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { apiFailure } from "@/lib/api-error";
 import { getCurrentIdentity } from "@/lib/session";
-import { createServerSupabaseClient } from "@/lib/supabase";
 import {
   createDirectMessage,
   getDirectMessageContacts,
@@ -12,7 +11,6 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const ATTACHMENT_BUCKET = "direct-message-attachments";
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 const IMAGE_EXTENSIONS: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -64,13 +62,14 @@ export async function GET() {
   } catch (error) {
     return failure(
       error,
-      "DMを読み込めませんでした。SupabaseのDM用更新を確認してください。"
+      "DMを読み込めませんでした。PostgreSQLのDM用更新を確認してください。"
     );
   }
 }
 
 export async function POST(request: Request) {
   let uploadedAttachmentPath: string | null = null;
+  let attachmentData: Buffer | null = null;
   try {
     const identity = await syncViewer();
     if (!identity) return unauthorized();
@@ -93,20 +92,8 @@ export async function POST(request: Request) {
         throw new Error("画像は5MB以下にしてください。");
       }
 
-      const supabase = createServerSupabaseClient();
-      if (!supabase) {
-        throw new Error("画像添付にはSupabase Storageの設定が必要です。");
-      }
-
       uploadedAttachmentPath = `${identity.eventId}/${randomUUID()}.${extension}`;
-      const { error: uploadError } = await supabase.storage
-        .from(ATTACHMENT_BUCKET)
-        .upload(uploadedAttachmentPath, Buffer.from(await attachment.arrayBuffer()), {
-          contentType: attachment.type,
-          upsert: false
-        });
-      if (uploadError) throw uploadError;
-
+      attachmentData = Buffer.from(await attachment.arrayBuffer());
       attachmentName = attachment.name.slice(0, 255) || `image.${extension}`;
       attachmentMimeType = attachment.type;
       attachmentSize = attachment.size;
@@ -122,15 +109,13 @@ export async function POST(request: Request) {
       attachmentPath: uploadedAttachmentPath,
       attachmentName,
       attachmentMimeType,
-      attachmentSize
+      attachmentSize,
+      attachmentData
     });
 
     return NextResponse.json({ message });
   } catch (error) {
-    if (uploadedAttachmentPath) {
-      const supabase = createServerSupabaseClient();
-      await supabase?.storage.from(ATTACHMENT_BUCKET).remove([uploadedAttachmentPath]);
-    }
+
     return failure(error, "DMを送信できませんでした。");
   }
 }
