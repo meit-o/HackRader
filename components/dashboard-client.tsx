@@ -215,6 +215,9 @@ export function DashboardClient({
           <h1 className="text-2xl font-bold tracking-tight text-ink sm:text-3xl">
             {isAdmin ? "全体の開発状況" : "開発状況"}
           </h1>
+          {event?.name && (
+            <p className="mt-1 text-sm font-semibold text-pulse">{event.name}</p>
+          )}
           <p className="mt-1.5 text-sm leading-6 text-muted">
             {isAdmin
               ? "全チームの進み具合です。参加コードはヘッダー右上からコピーできます。"
