@@ -241,14 +241,15 @@ export function OnboardingClient({
   const [webhook, setWebhook] = useState<WebhookResult | null>(null);
   const [openAdminSetup, setOpenAdminSetup] = useState(viewer?.role === "admin" && initialTeams.length === 0);
 
-  // GitHubログイン未設定のローカル環境だけ、手入力での参加を許す。
+  // GitHubログイン未設定のローカル環境でも、参加者・運営の入口は
+  // 常にGitHubログインに統一する。未設定なら認証APIが明示的に案内する。
   const manualEntry = !authConfigured;
   // 運営セクションは運営ロールのときだけ出す。参加者の視界に入れない。
   const isStaff = viewer?.role === "admin";
-  const canManage = manualEntry || isStaff;
+  const canManage = isStaff;
   // メンターと審査員はGitHubログイン不要。参加者と運営だけログインを求める。
   const needsLogin =
-    authConfigured && !viewer && pickedRole !== "mentor" && pickedRole !== "judge";
+    !viewer && pickedRole !== "mentor" && pickedRole !== "judge";
 
   useEffect(() => {
     const restoreDraft = window.setTimeout(() => {
