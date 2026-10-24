@@ -9,7 +9,7 @@ Hackathon team dashboard. GitHub activity feeds team scores and activity timelin
 - Versioned TypeORM migrations; schema synchronization is disabled
 - GitHub OAuth and signed GitHub webhooks
 - Private DM image attachments stored as PostgreSQL bytea values
-- Render Node web service and Render PostgreSQL for production
+- Vercel for the Next.js web service and Neon PostgreSQL for production
 
 Live dashboard updates use API polling. The browser does not connect directly to the database.
 
@@ -27,9 +27,9 @@ Edit `DATABASE_URL` in `.env.local` with your local PostgreSQL username and pass
 
 To connect GitHub OAuth locally, create a GitHub OAuth App with callback `http://localhost:3000/api/auth/github/callback` and set `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, and a random `AUTH_SECRET` in `.env.local`. Demo mode is enabled locally by default; set `ENABLE_DEMO_MODE=false` when using the actual event flow.
 
-## Deploy to Render
+## Deploy to Vercel and Neon
 
-Create a Render Blueprint from this repository and review its web service and persistent PostgreSQL plan. Set GitHub OAuth and webhook secrets in the Render dashboard. The Blueprint provides `DATABASE_URL` through Render's private network. For step-by-step setup, OAuth callback and webhook URLs, local PostgreSQL, and data migration, see [DEPLOY.md](./DEPLOY.md).
+Import this repository into Vercel, then install the Neon PostgreSQL integration from the Vercel Marketplace. Map the integration's pooled connection string to `DATABASE_URL`; TypeORM applies pending migrations when the application first connects. Set GitHub OAuth, webhook, WakaTime, and `AUTH_SECRET` variables in the Vercel project. For the complete setup, callback URLs, local PostgreSQL, and data migration steps, see [DEPLOY.md](./DEPLOY.md).
 
 ## Migrate existing records
 

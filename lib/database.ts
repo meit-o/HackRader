@@ -9,7 +9,7 @@ declare global {
 
 export function isDatabaseConfigured(): boolean {
   if (process.env.NODE_ENV === "production" && !process.env.DATABASE_URL) {
-    throw new Error("DATABASE_URL is required in production; configure the Render PostgreSQL connection.");
+    throw new Error("DATABASE_URL is required in production; configure the Vercel PostgreSQL integration.");
   }
   return Boolean(process.env.DATABASE_URL);
 }
@@ -23,14 +23,19 @@ export function getDataSource(): Promise<DataSource> {
     const source = new DataSource({
       type: "postgres",
       url: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: false } : false,
+      ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: false },
       entities: [],
       migrations: [InitialPostgresSchema1730000000000],
       migrationsTableName: "typeorm_migrations",
       migrationsRun: true,
       synchronize: false,
       logging: process.env.NODE_ENV === "development" && process.env.DB_LOGGING === "true",
-      extra: { max: Number(process.env.DB_POOL_SIZE ?? 5), idleTimeoutMillis: 30_000 }
+      extra: {
+        // Vercel functions should use the pooled Neon connection URL and a small
+        // per-instance pool to avoid exhausting the database connection limit.
+        max: Number(process.env.DB_POOL_SIZE ?? (process.env.VERCEL ? 1 : 5)),
+        idleTimeoutMillis: 30_000
+      }
     });
     return source.initialize();
   })();
