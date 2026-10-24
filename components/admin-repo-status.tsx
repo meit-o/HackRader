@@ -8,6 +8,7 @@ import type { Team } from "@/lib/types";
  */
 export function AdminRepoStatus({ teams }: { teams: Team[] }) {
   const unset = teams.filter((team) => !team.github_repo);
+  const configured = teams.length - unset.length;
   const sorted = [...teams].sort((a, b) => {
     if (Boolean(a.github_repo) !== Boolean(b.github_repo)) {
       return a.github_repo ? 1 : -1;
@@ -19,9 +20,11 @@ export function AdminRepoStatus({ teams }: { teams: Team[] }) {
     <Panel
       title="リポジトリの設定状況"
       description={
-        unset.length > 0
-          ? `${unset.length} チームが未設定です。設定するまでスコアは動きません。`
-          : "すべてのチームがリポジトリを設定済みです。"
+        teams.length === 0
+          ? "チームが登録されると、設定状況をここで確認できます。"
+          : `${teams.length}チーム中${configured}チームが設定済みです。${
+              unset.length > 0 ? ` ${unset.length}チームは未設定です。` : ""
+            }`
       }
     >
       {teams.length === 0 ? (
