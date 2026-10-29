@@ -78,13 +78,33 @@ class TableQuery implements PromiseLike<Result> {
         if (this.maxRows !== undefined) query.take(this.maxRows);
         data = await query.getRawMany();
       } else if (this.action === "insert" || this.action === "upsert") {
-        let query = qb.insert().into(this.tableName).values(this.values as any);
+        const rows = Array.isArray(this.values) ? this.values : [this.values];
+        if (!rows.length) throw new Error(`No values provided for ${this.tableName}`);
+        const names = Object.keys(rows[0]);
+        if (!names.length || rows.some((row) => Object.keys(row).join(",") !== names.join(","))) {
+          throw new Error(`Insert values must have matching columns for ${this.tableName}`);
+        }
+        const quotedTable = quoteIdentifier(this.tableName);
+        const quotedColumns = names.map(quoteIdentifier).join(", ");
+        const parameters: unknown[] = [];
+        const valuesSql = rows.map((row) => {
+          const placeholders = names.map((name) => {
+            parameters.push(row[name]);
+            return `$${parameters.length}`;
+          });
+          return `(${placeholders.join(", ")})`;
+        }).join(", ");
+        let sql = `INSERT INTO ${quotedTable} (${quotedColumns}) VALUES ${valuesSql}`;
         if (this.action === "upsert") {
           if (!this.conflict?.length) throw new Error(`No conflict key configured for ${this.tableName}`);
-          const updates = Object.keys(Array.isArray(this.values) ? this.values[0] : this.values).filter(k => !this.conflict!.includes(k));
-          query = updates.length ? query.orUpdate(updates, this.conflict) : query.orIgnore();
+          const updates = names.filter((name) => !this.conflict!.includes(name));
+          sql += updates.length
+            ? ` ON CONFLICT (${this.conflict.map(quoteIdentifier).join(", ")}) DO UPDATE SET ${updates.map((name) => `${quoteIdentifier(name)} = EXCLUDED.${quoteIdentifier(name)}`).join(", ")}`
+            : ` ON CONFLICT (${this.conflict.map(quoteIdentifier).join(", ")}) DO UPDATE SET ${quoteIdentifier(this.conflict[0])} = EXCLUDED.${quoteIdentifier(this.conflict[0])}`;
         }
-        const result = await query.returning("*").execute(); data = this.returnRows ? result.raw : null;
+        if (this.returnRows) sql += " RETURNING *";
+        const result = await source.query(sql, parameters);
+        data = this.returnRows ? result : null;
       } else if (this.action === "update") {
         const query = qb.update(this.tableName).set(this.values as any).where("1=1"); applyFilters(query);
         const result = await query.returning("*").execute(); data = this.returnRows ? returnedRows(result.raw) : null;
@@ -96,6 +116,13 @@ class TableQuery implements PromiseLike<Result> {
       return { data, error: null };
     } catch (error) { return { data: null, error: error instanceof Error ? error : new Error(String(error)) }; }
   }
+}
+
+function quoteIdentifier(identifier: string): string {
+  if (!/^[a-z_][a-z0-9_]*$/i.test(identifier)) {
+    throw new Error(`Invalid PostgreSQL identifier: ${identifier}`);
+  }
+  return `"${identifier}"`;
 }
 
 function returnedRows(raw: unknown): unknown {
