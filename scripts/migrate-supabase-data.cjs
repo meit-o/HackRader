@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- this one-time migration is CommonJS */
 /* One-time transfer from the legacy Supabase PostgreSQL database to the new PostgreSQL database. */
 const { DataSource } = require("typeorm");
 require("dotenv").config({ path: ".env.local" });

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- dynamic SQL facade */
 import { getDataSource } from "@/lib/database";
 import { DataSource, Brackets } from "typeorm";
 
@@ -67,7 +68,10 @@ class TableQuery implements PromiseLike<Result> {
       const source = this.source ?? await getDataSource();
       const alias = "row";
       const qb = source.createQueryBuilder();
-      const applyFilters = (query: any) => this.filters.forEach((filter) => filter(query, alias));
+      // UPDATE / DELETE queries do not have the SELECT alias (`row`), so their
+      // predicates must be qualified with the actual target-table name instead.
+      const applyFilters = (query: any, filterAlias = alias) =>
+        this.filters.forEach((filter) => filter(query, filterAlias));
       let data: any;
       if (this.action === "select") {
         const names = this.columns === "*" ? columns[this.tableName] : this.columns.split(",").map(c => c.trim());
@@ -106,10 +110,12 @@ class TableQuery implements PromiseLike<Result> {
         const result = await source.query(sql, parameters);
         data = this.returnRows ? result : null;
       } else if (this.action === "update") {
-        const query = qb.update(this.tableName).set(this.values as any).where("1=1"); applyFilters(query);
+        const query = qb.update(this.tableName).set(this.values as any).where("1=1");
+        applyFilters(query, this.tableName);
         const result = await query.returning("*").execute(); data = this.returnRows ? returnedRows(result.raw) : null;
       } else {
-        const query = qb.delete().from(this.tableName).where("1=1"); applyFilters(query);
+        const query = qb.delete().from(this.tableName).where("1=1");
+        applyFilters(query, this.tableName);
         const result = await query.returning("*").execute(); data = this.returnRows ? returnedRows(result.raw) : null;
       }
       if (this.one) data = Array.isArray(data) ? data[0] ?? null : data;

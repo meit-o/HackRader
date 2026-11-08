@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- legacy in-memory and database record facade */
 import { randomUUID } from "node:crypto";
 import {
   ACTIVITY_LABELS,

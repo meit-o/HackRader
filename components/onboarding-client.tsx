@@ -745,10 +745,10 @@ export function OnboardingClient({
 
       saveSession(payload.session);
 
+      // A repository/Webhook failure is non-fatal: membership and the session
+      // were already created. Continue to the dashboard where it can be retried.
       if (payload.repoWarning) {
-        // 参加はできているので、リポジトリだけダッシュボードで設定してもらう。
-        setMessage(`${payload.repoWarning} 参加は完了しています。`);
-        setIsBusy(false);
+        router.push(`/dashboard?repoWarning=${encodeURIComponent(payload.repoWarning)}`);
         return;
       }
 

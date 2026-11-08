@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ActivityFeed } from "@/components/activity-feed";
 import { markAnnouncementsSeen } from "@/components/announcement-badge";
 import { ContributorPanel } from "@/components/contributor-panel";
@@ -44,6 +45,8 @@ export function DashboardClient({
   viewer?: Viewer | null;
   demoEnabled?: boolean;
 }) {
+  const searchParams = useSearchParams();
+  const repoWarning = searchParams.get("repoWarning");
   const {
     state,
     isRefreshing,
@@ -231,6 +234,14 @@ export function DashboardClient({
       </header>
 
       <EventCountdown event={event} />
+      {repoWarning && (
+        <p
+          role="alert"
+          className="rounded-xl border border-hot/30 bg-hot/10 px-4 py-3 text-sm font-medium text-hot"
+        >
+          {repoWarning} チームには参加済みです。リポジトリは下のチーム欄から設定し直せます。
+        </p>
+      )}
       {isAdmin && event && <EventDeleteControl event={event} />}
 
       {/* 最初に他チームとの現在地を示し、その後に自チームの詳細を見る。 */}

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- third-party API payloads are normalized below */
 import { getPostgresStore } from "@/lib/postgres-store";
 import { getHackVerseState, getMembershipInEvent } from "@/lib/store";
 import {
