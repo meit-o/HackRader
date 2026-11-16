@@ -82,12 +82,12 @@ console.log("\n[2] GitHubイベントの解析");
 
   check(
     "push（3コミット）",
-    parseGitHubWebhook("push", { repository, commits: [1, 2, 3] }),
+    parseGitHubWebhook("push", { repository, commits: [{ id: "sha-1" }, { id: "sha-2" }, { id: "sha-3" }] }),
     {
       type: "push",
       githubRepo: "matsu/izumo-main",
       fallbackTeamName: "Izumo Main",
-      metadata: { commitCount: 3 }
+      metadata: { commitCount: 3, commitShas: ["sha-1", "sha-2", "sha-3"] }
     }
   );
   check(

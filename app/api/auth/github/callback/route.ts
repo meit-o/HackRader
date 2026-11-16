@@ -8,6 +8,7 @@ import {
   exchangeCodeForToken,
   fetchGitHubUser,
   getCallbackUrl,
+  getSafeReturnTo,
   isGitHubAuthConfigured,
   serializeIdentity
 } from "@/lib/github-auth";
@@ -50,10 +51,7 @@ export async function GET(request: Request) {
 
     // 認可前に見ていた場所へ戻す。無ければトップ。
     const returnTo = cookieStore.get(RETURN_TO_COOKIE)?.value;
-    const safeReturnTo =
-      returnTo && returnTo.startsWith("/") && !returnTo.startsWith("//")
-        ? returnTo
-        : "/";
+    const safeReturnTo = getSafeReturnTo(returnTo, origin);
 
     const destination = new URL(safeReturnTo, origin);
     destination.searchParams.set("logged_in", "1");

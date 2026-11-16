@@ -15,7 +15,7 @@ Live dashboard updates use API polling. The browser does not connect directly to
 
 ## Local setup
 
-Install PostgreSQL locally (listening on port `5432`) and Node.js 20.9 or newer. Create a database named `hackradar`, then in the repository root:
+Install PostgreSQL locally (listening on port `5432`) and Node.js 22.12 or newer within the 22.x release line (see `.nvmrc` and `package.json`). Create a database named `hackradar`, then in the repository root:
 
 ```sh
 npm ci

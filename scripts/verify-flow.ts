@@ -32,6 +32,11 @@ import {
   verifyMentorInviteCode
 } from "@/lib/store";
 
+// This verifier creates and deletes fixtures; never allow it to use a real database.
+if (process.env.DATABASE_URL || process.env.NODE_ENV === "production") {
+  throw new Error("verify:flow requires the in-memory store. Unset DATABASE_URL and NODE_ENV=production.");
+}
+
 let pass = 0;
 let fail = 0;
 

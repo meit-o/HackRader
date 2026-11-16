@@ -45,6 +45,20 @@ WakaTimeを使う場合は、次のCallback URLを`WAKATIME_OAUTH_CALLBACK_URL`�
 https://<Vercelのドメイン>/api/auth/wakatime/callback
 ```
 
+## 独自ドメイン `hackradar.dev`
+
+本番の正規URLは `https://www.hackradar.dev` です。`https://hackradar.dev` はwww付きへ転送されます。OAuthのCookieが同じホストへ戻るよう、外部サービスの登録先もwww付きに統一してください。
+
+| 設定 | 本番の値 |
+| --- | --- |
+| GitHub OAuth AppのHomepage URL | `https://www.hackradar.dev` |
+| GitHub OAuth AppのAuthorization callback URL | `https://www.hackradar.dev/api/auth/github/callback` |
+| Vercelの`APP_BASE_URL` | `https://www.hackradar.dev` |
+| GitHub Webhook URL | `https://www.hackradar.dev/api/github/webhook` |
+| WakaTimeのRedirect URI（利用する場合） | `https://www.hackradar.dev/api/auth/wakatime/callback` |
+
+`GITHUB_OAUTH_CALLBACK_URL`や`WAKATIME_OAUTH_CALLBACK_URL`を明示している場合も、それぞれ上記のURLに合わせます。これらの環境変数はVercelで変更後、再デプロイが必要です。ローカルやPreviewには、その環境専用のOAuth設定を使ってください。
+
 ## ローカルのPostgreSQLを使う
 
 Dockerは使わず、PCにPostgreSQLをインストールしてポート`5432`で起動します。

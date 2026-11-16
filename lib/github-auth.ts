@@ -191,6 +191,21 @@ export function getCallbackUrl(request: Request): string {
   return new URL("/api/auth/github/callback", new URL(request.url).origin).toString();
 }
 
+/** Validate the parsed destination; backslashes and control characters can change its host. */
+export function getSafeReturnTo(value: string | null | undefined, origin: string): string {
+  if (!value?.startsWith("/") || value.startsWith("//")) return "/";
+
+  try {
+    const destination = new URL(value, origin);
+    if (destination.origin !== new URL(origin).origin || destination.pathname.startsWith("//")) {
+      return "/";
+    }
+    return `${destination.pathname}${destination.search}${destination.hash}`;
+  } catch {
+    return "/";
+  }
+}
+
 /**
  * 既定は `read:user admin:repo_hook`。
  * `admin:repo_hook` はWebhookの管理だけを許す狭いスコープで、コードは読めない。

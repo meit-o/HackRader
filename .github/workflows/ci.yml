@@ -40,5 +40,11 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Verify core logic
+        run: npm run verify:core
+
+      - name: Verify event workflow
+        run: npm run verify:flow
+
       - name: Production build
         run: npm run build

@@ -5,6 +5,7 @@ import {
   buildAuthorizeUrl,
   createOAuthState,
   getCallbackUrl,
+  getSafeReturnTo,
   isGitHubAuthConfigured
 } from "@/lib/github-auth";
 
@@ -30,16 +31,15 @@ export async function GET(request: Request) {
 
   // ログイン後にどこへ戻すか。開いたリダイレクトを避けるため、
   // 自サイト内の相対パスだけを受け付ける。
-  const returnTo = requestUrl.searchParams.get("return_to") ?? "";
-  if (returnTo.startsWith("/") && !returnTo.startsWith("//")) {
-    response.cookies.set(RETURN_TO_COOKIE, returnTo, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: 600
-    });
-  }
+  const returnTo = getSafeReturnTo(requestUrl.searchParams.get("return_to"), origin);
+  // Always overwrite an earlier login attempt's destination, including when omitted.
+  response.cookies.set(RETURN_TO_COOKIE, returnTo, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 600
+  });
 
   response.cookies.set(STATE_COOKIE, state, {
     httpOnly: true,
