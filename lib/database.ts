@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { DataSource } from "typeorm";
 import { InitialPostgresSchema1730000000000 } from "@/database/migrations/1730000000000-InitialPostgresSchema";
+import { ManagedTeamRepositories1795000000000 } from "@/database/migrations/1795000000000-ManagedTeamRepositories";
 
 declare global {
   // Reuse connections during Next.js development hot reloads and serverless invocations.
@@ -25,7 +26,7 @@ export function getDataSource(): Promise<DataSource> {
       url: process.env.DATABASE_URL,
       ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: false },
       entities: [],
-      migrations: [InitialPostgresSchema1730000000000],
+      migrations: [InitialPostgresSchema1730000000000, ManagedTeamRepositories1795000000000],
       migrationsTableName: "typeorm_migrations",
       migrationsRun: true,
       synchronize: false,
