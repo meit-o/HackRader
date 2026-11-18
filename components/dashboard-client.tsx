@@ -17,7 +17,7 @@ import { HelpComposer } from "@/components/help-composer";
 import { MyTeamCard } from "@/components/my-team-card";
 import { RankingPanel } from "@/components/ranking-panel";
 import { StaffChat } from "@/components/staff-chat";
-import { PollingStatusBadge } from "@/components/polling-status-badge";
+import { RealtimeStatusBadge } from "@/components/realtime-status-badge";
 import { TeamRepoSetup } from "@/components/team-repo-setup";
 import { TechStackPanel } from "@/components/tech-stack-panel";
 import { WakaTimePanel } from "@/components/wakatime-panel";
@@ -35,12 +35,14 @@ type Viewer = {
 export function DashboardClient({
   initialState,
   event = null,
+  eventId = null,
   view,
   viewer = null,
   demoEnabled = false
 }: {
   initialState: HackVerseState;
   event?: HackEvent | null;
+  eventId?: string | null;
   view: ViewMode;
   viewer?: Viewer | null;
   demoEnabled?: boolean;
@@ -50,6 +52,7 @@ export function DashboardClient({
   const {
     state,
     isRefreshing,
+    isRealtimeConnected,
     lastActivityId,
     refresh,
     triggerDemoEvent,
@@ -57,7 +60,7 @@ export function DashboardClient({
     createHelpReply,
     acceptHelpReply,
     createChatMessage
-  } = useHackVerseState(initialState);
+  } = useHackVerseState(initialState, eventId);
 
   // 参加時に保存したセッションから自分のチームを拾い、一覧で目印を付ける。
   const [myTeamId, setMyTeamId] = useState<string | null>(null);
@@ -227,7 +230,7 @@ export function DashboardClient({
               : "GitHubにプッシュすると、この画面が自動で更新されます。"}
           </p>
         </div>
-        <PollingStatusBadge isRefreshing={isRefreshing} />
+        {eventId && <RealtimeStatusBadge isConnected={isRealtimeConnected} isRefreshing={isRefreshing} />}
         {demoEnabled && (isAdmin || !viewer && !sessionViewer) && (
           <DemoControls teams={state.teams} onTrigger={triggerDemoEvent} />
         )}

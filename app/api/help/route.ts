@@ -4,6 +4,7 @@ import { isDemoModeEnabled } from "@/lib/env";
 import { isGitHubAuthConfigured } from "@/lib/github-auth";
 import { getCurrentIdentity } from "@/lib/session";
 import { createHelpPost, getMembershipInEvent, getTeamById } from "@/lib/store";
+import { notifyEventStateChanged } from "@/lib/realtime";
 
 export const dynamic = "force-dynamic";
 
@@ -92,6 +93,7 @@ export async function POST(request: Request) {
       anonymous: body.anonymous === true
     });
 
+    await notifyEventStateChanged(identity?.eventId);
     return NextResponse.json({ post });
   } catch (error) {
     return apiFailure("help", error, "質問を投稿できませんでした。");

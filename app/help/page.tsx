@@ -35,7 +35,7 @@ export default async function HelpPage() {
               : "公開で質問・回答できる場所です。運営からの連絡やチーム相談は「お知らせ」を開いてください。"}
         </p>
       </div>
-      <DashboardClient initialState={state} view="help" viewer={viewer} />
+      <DashboardClient initialState={state} eventId={identity?.eventId} view="help" viewer={viewer} />
     </Shell>
   );
 }

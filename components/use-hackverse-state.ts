@@ -8,9 +8,11 @@ import type {
   HackVerseState
 } from "@/lib/types";
 
-export function useHackVerseState(initialState: HackVerseState) {
+export function useHackVerseState(initialState: HackVerseState, eventId?: string | null) {
   const [state, setState] = useState(initialState);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [connectedEventId, setConnectedEventId] = useState<string | null>(null);
+  const isRealtimeConnected = Boolean(eventId && connectedEventId === eventId);
   // 初回表示では光らせない。あとから届いたイベントだけをハイライトする。
   const [lastActivityId, setLastActivityId] = useState("");
   const newestActivityIdRef = useRef(initialState.activities[0]?.id ?? "");
@@ -36,9 +38,53 @@ export function useHackVerseState(initialState: HackVerseState) {
   }, []);
 
   useEffect(() => {
-    const interval = window.setInterval(() => void refresh(), 2200);
-    return () => window.clearInterval(interval);
-  }, [refresh]);
+    if (!eventId) return;
+
+    let disposed = false;
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | undefined;
+    let reconnectDelay = 1000;
+
+    const connect = () => {
+      if (disposed) return;
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const currentSocket = new WebSocket(`${protocol}//${window.location.host}/api/realtime`);
+      socket = currentSocket;
+
+      currentSocket.addEventListener("open", () => {
+        reconnectDelay = 1000;
+      });
+      currentSocket.addEventListener("message", (event) => {
+        try {
+          const payload = JSON.parse(String(event.data)) as { type?: string };
+          if (payload.type === "ready") {
+            setConnectedEventId(eventId);
+            // Fetch after the server confirms subscription so no event can fall
+            // between the initial snapshot and the start of the live stream.
+            void refresh().catch(() => undefined);
+          } else if (payload.type === "state_changed") {
+            void refresh().catch(() => undefined);
+          }
+        } catch {
+          // Ignore malformed notifications; the server sends only small JSON messages.
+        }
+      });
+      currentSocket.addEventListener("close", () => {
+        if (disposed) return;
+        setConnectedEventId(null);
+        reconnectTimer = window.setTimeout(connect, reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+      });
+      currentSocket.addEventListener("error", () => currentSocket.close());
+    };
+
+    connect();
+    return () => {
+      disposed = true;
+      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
+      socket?.close();
+    };
+  }, [eventId, refresh]);
 
   const triggerDemoEvent = useCallback(
     async (teamId: string, type: ActivityType) => {
@@ -151,6 +197,7 @@ export function useHackVerseState(initialState: HackVerseState) {
     () => ({
       state,
       isRefreshing,
+      isRealtimeConnected,
       lastActivityId,
       refresh,
       triggerDemoEvent,
@@ -162,6 +209,7 @@ export function useHackVerseState(initialState: HackVerseState) {
     [
       state,
       isRefreshing,
+      isRealtimeConnected,
       lastActivityId,
       refresh,
       triggerDemoEvent,

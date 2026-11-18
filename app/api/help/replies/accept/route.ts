@@ -3,6 +3,7 @@ import { apiFailure } from "@/lib/api-error";
 import { isGitHubAuthConfigured } from "@/lib/github-auth";
 import { getCurrentIdentity } from "@/lib/session";
 import { acceptHelpReply, getHelpPostById } from "@/lib/store";
+import { notifyEventStateChanged } from "@/lib/realtime";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +60,7 @@ export async function POST(request: Request) {
 
   try {
     await acceptHelpReply({ helpPostId: body.helpPostId, replyId: body.replyId });
+    await notifyEventStateChanged(identity?.eventId);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return apiFailure("help-accept", error, "採用に失敗しました。");
