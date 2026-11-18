@@ -200,7 +200,7 @@ export function OnboardingClient({
   ownedEvents?: HackEvent[];
   joinedEvents?: JoinedEvent[];
   authConfigured: boolean;
-  organizationRepository: { installUrl: string | null } | null;
+  organizationRepository: { configured: boolean; installUrl: string | null } | null;
   viewer: Viewer | null;
 }) {
   const router = useRouter();
@@ -1482,7 +1482,7 @@ export function OnboardingClient({
                   required
                 />
                 <p className="mt-1.5 text-xs leading-5 text-muted">
-                  リポジトリは参加者が自分で選ぶので、ここでは入力しません。
+                  登録後、参加者が既存のリポジトリを連携するか、運営がOrganizationに新しく作成できます。
                 </p>
               </Field>
               <button type="submit" disabled={isBusy} className={primaryButtonClass}>
@@ -1490,6 +1490,30 @@ export function OnboardingClient({
                 チームを登録する
               </button>
             </form>
+
+            {organizationRepository && (
+              <div className="mt-5 border-t border-line pt-5">
+                <h3 className="text-sm font-bold text-ink">Organizationのリポジトリ作成</h3>
+                {!organizationRepository.configured && (
+                  <p id="organization-repository-setup" className="mt-2 text-xs leading-5 text-ink2">
+                    GitHub Appの接続設定が必要です。アプリ管理者が設定を完了すると、各チームの作成ボタンが利用できます。
+                  </p>
+                )}
+                {teams.length === 0 && (
+                  <>
+                    <p id="organization-repository-team" className="mt-2 text-xs leading-5 text-muted">
+                      {hackEvent
+                        ? "まず上のフォームからチームを登録してください。登録したチームごとにリポジトリを作成できます。"
+                        : "まずイベントを作り、チームを登録してください。登録したチームごとにリポジトリを作成できます。"}
+                    </p>
+                    <button type="button" disabled aria-describedby="organization-repository-team"
+                      className="mt-2 min-h-9 text-xs font-medium text-muted disabled:opacity-60">
+                      Organizationにリポジトリを作成
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
 
             {teams.length > 0 && (
               <ul className="mt-4 space-y-2 border-t border-line pt-4">
@@ -1634,7 +1658,9 @@ export function OnboardingClient({
                           </div>
                         </form>
                       ) : (
-                        <button type="button" disabled={isBusy} onClick={() => startCreatingRepository(team)}
+                        <button type="button" disabled={isBusy || !organizationRepository.configured}
+                          aria-describedby={!organizationRepository.configured ? "organization-repository-setup" : undefined}
+                          onClick={() => startCreatingRepository(team)}
                           className="mt-2 min-h-9 text-xs font-medium text-pulse underline underline-offset-2 disabled:opacity-40">
                           Organizationにリポジトリを作成
                         </button>

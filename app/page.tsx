@@ -38,8 +38,8 @@ export default async function Page() {
       ownedEvents={ownedEvents}
       joinedEvents={joinedEvents}
       authConfigured={isConfigured}
-      organizationRepository={identity?.role === "admin" && isOrganizationRepositoryCreationConfigured()
-        ? { installUrl: getGitHubAppInstallUrl() }
+      organizationRepository={identity?.role === "admin"
+        ? { configured: isOrganizationRepositoryCreationConfigured(), installUrl: getGitHubAppInstallUrl() }
         : null}
       viewer={
         identity
