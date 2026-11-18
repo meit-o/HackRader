@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { OnboardingClient } from "@/components/onboarding-client";
 import { getAuthStatus } from "@/lib/session";
 import {
@@ -9,6 +10,10 @@ import {
 } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  alternates: { canonical: "https://www.hackradar.dev/" }
+};
 
 export default async function Page() {
   const { isConfigured, identity } = await getAuthStatus();
