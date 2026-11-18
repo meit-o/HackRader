@@ -31,7 +31,12 @@ export function getWakaTimeCallbackUrl(request: Request): string {
     return configuredCallbackUrl;
   }
 
-  return new URL("/api/auth/wakatime/callback", new URL(request.url).origin).toString();
+  // OAuth must return to the same canonical host that issued the state cookie.
+  // Vercel requests can arrive on deployment-specific *.vercel.app domains, so
+  // prefer the configured public app URL over the incoming request host.
+  const configuredAppUrl = process.env.APP_BASE_URL?.trim() || process.env.NEXT_PUBLIC_APP_URL?.trim();
+  const baseUrl = configuredAppUrl || new URL(request.url).origin;
+  return new URL("/api/auth/wakatime/callback", baseUrl).toString();
 }
 
 export function buildWakaTimeAuthorizeUrl({
