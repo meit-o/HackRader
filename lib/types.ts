@@ -32,6 +32,7 @@ export type Team = {
   name: string;
   /** 参加者があとから紐づけるため、未設定（null）を許す。 */
   github_repo: string | null;
+  github_repo_managed?: boolean;
   score: number;
   commit_count: number;
   house_level: number;

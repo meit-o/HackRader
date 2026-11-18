@@ -258,7 +258,7 @@ export function DashboardClient({
         />
       )}
 
-      {myTeam && (!myTeam.github_repo || isRepoEditorOpen) && (
+      {myTeam && !myTeam.github_repo_managed && (!myTeam.github_repo || isRepoEditorOpen) && (
         <TeamRepoSetup
           team={myTeam}
           onDone={() => {
@@ -278,7 +278,7 @@ export function DashboardClient({
             latestActivity={myLatestActivity}
             members={state.members.filter((member) => member.team_id === myTeam.id)}
             viewerLogin={activeViewer?.login ?? null}
-            onChangeRepo={() => setIsRepoEditorOpen(true)}
+            onChangeRepo={myTeam.github_repo_managed ? undefined : () => setIsRepoEditorOpen(true)}
           />
           <WakaTimePanel viewerLogin={activeViewer?.login ?? null} />
         </div>

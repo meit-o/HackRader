@@ -10,6 +10,7 @@ import { ensureRepoWebhook, type WebhookSetupResult } from "@/lib/github-webhook
 import { getCurrentIdentity } from "@/lib/session";
 import {
   getEventByJoinCode,
+  getTeamById,
   joinTeamWithInvite,
   setTeamRepo
 } from "@/lib/store";
@@ -123,16 +124,17 @@ export async function POST(request: Request) {
 
     if (body.githubRepo?.trim() && session.teamId) {
       try {
-        const team = await setTeamRepo({ teamId: session.teamId, githubRepo: body.githubRepo });
-        if (!team.github_repo) {
-          throw new Error("リポジトリを設定できませんでした。");
+        const currentTeam = await getTeamById(session.teamId);
+        if (!currentTeam?.github_repo_managed) {
+          const team = await setTeamRepo({ teamId: session.teamId, githubRepo: body.githubRepo });
+          if (!team.github_repo) throw new Error("リポジトリを設定できませんでした。");
+          webhook = await ensureRepoWebhook({
+            accessToken: identity?.accessToken,
+            scopes: identity?.scopes,
+            githubRepo: team.github_repo,
+            requestUrl: request.url
+          });
         }
-        webhook = await ensureRepoWebhook({
-          accessToken: identity?.accessToken,
-          scopes: identity?.scopes,
-          githubRepo: team.github_repo,
-          requestUrl: request.url
-        });
       } catch (repoError) {
         // 参加自体は成立させ、リポジトリはあとから設定してもらう。
         const response = NextResponse.json({

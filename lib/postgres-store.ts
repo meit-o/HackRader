@@ -14,6 +14,7 @@ const conflictKeys: Record<string, string[]> = {
 const columns: Record<string, string[]> = {
  users:["id","github_username","display_name","avatar_url","role","specialty","created_at"], events:["id","name","join_code","owner_github_username","starts_at","ends_at","score_config","created_at"], teams:["id","event_id","name","github_repo","score","commit_count","house_level","created_at"], team_members:["id","team_id","user_id"], event_members:["event_id","user_id","role","specialty","created_at"], wakatime_connections:["user_id","access_token","refresh_token","expires_at","created_at","updated_at"], team_invites:["id","code","team_id","invited_by","created_at"], activities:["id","team_id","type","message","score_delta","actor_login","actor_avatar_url","metadata","created_at"], help_posts:["id","user_id","team_id","title","body","category","is_anonymous","status","created_at"], help_replies:["id","help_post_id","author_name","author_github","author_role","body","is_accepted","created_at"], chat_messages:["id","channel","event_id","team_id","author_name","author_role","body","created_at"], direct_messages:["id","event_id","sender_login","recipient_login","sender_name","sender_role","body","attachment_path","attachment_name","attachment_mime_type","attachment_size","attachment_data","created_at"]
 };
+columns.teams.push("github_repo_managed");
 
 type Result = { data: any; error: Error | null; count?: number };
 

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { OnboardingClient } from "@/components/onboarding-client";
+import { getGitHubAppInstallUrl, isOrganizationRepositoryCreationConfigured } from "@/lib/github-organization";
 import { getAuthStatus } from "@/lib/session";
 import {
   getEvent,
@@ -37,6 +38,9 @@ export default async function Page() {
       ownedEvents={ownedEvents}
       joinedEvents={joinedEvents}
       authConfigured={isConfigured}
+      organizationRepository={identity?.role === "admin" && isOrganizationRepositoryCreationConfigured()
+        ? { installUrl: getGitHubAppInstallUrl() }
+        : null}
       viewer={
         identity
           ? {

@@ -189,6 +189,7 @@ export function OnboardingClient({
   ownedEvents = [],
   joinedEvents = [],
   authConfigured,
+  organizationRepository,
   viewer
 }: {
   initialInvites: TeamInviteView[];
@@ -199,6 +200,7 @@ export function OnboardingClient({
   ownedEvents?: HackEvent[];
   joinedEvents?: JoinedEvent[];
   authConfigured: boolean;
+  organizationRepository: { installUrl: string | null } | null;
   viewer: Viewer | null;
 }) {
   const router = useRouter();
@@ -220,6 +222,11 @@ export function OnboardingClient({
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
   const [editingTeamName, setEditingTeamName] = useState("");
   const [editingGithubRepo, setEditingGithubRepo] = useState("");
+  const [repositoryTeamId, setRepositoryTeamId] = useState<string | null>(null);
+  const [organizationName, setOrganizationName] = useState("");
+  const [repositoryName, setRepositoryName] = useState("");
+  const [repositoryError, setRepositoryError] = useState("");
+  const [createdRepository, setCreatedRepository] = useState<{ team: Team; webhook: WebhookResult } | null>(null);
   const [githubRepo, setGithubRepo] = useState("");
   const [repos, setRepos] = useState<RepoOption[]>([]);
   const [canListPrivate, setCanListPrivate] = useState(false);
@@ -574,6 +581,7 @@ export function OnboardingClient({
   }
 
   function startEditingTeam(team: Team) {
+    setRepositoryTeamId(null);
     setEditingTeamId(team.id);
     setEditingTeamName(team.name);
     setEditingGithubRepo(team.github_repo ?? "");
@@ -583,6 +591,49 @@ export function OnboardingClient({
     setEditingTeamId(null);
     setEditingTeamName("");
     setEditingGithubRepo("");
+  }
+
+  function startCreatingRepository(team: Team) {
+    cancelEditingTeam();
+    setRepositoryTeamId(team.id);
+    setRepositoryName(team.name.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 100));
+    setRepositoryError("");
+  }
+
+  async function createTeamRepository(event: FormEvent<HTMLFormElement>, teamId: string) {
+    event.preventDefault();
+    if (isBusy) return;
+    setIsBusy(true);
+    setRepositoryError("");
+
+    try {
+      const response = await fetch(`/api/admin/teams/${encodeURIComponent(teamId)}/organization-repository`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ organization: organizationName, name: repositoryName })
+      });
+      const payload = await response.json().catch(() => ({})) as {
+        team?: Team;
+        webhook?: WebhookResult;
+        error?: string;
+      };
+      if (!response.ok || !payload.team || !payload.webhook) {
+        setRepositoryError(payload.error ?? "作成結果を確認できませんでした。再試行する前にGitHubで作成結果を確認してください。");
+        return;
+      }
+
+      const updatedTeam = payload.team;
+      setTeams((current) => current.map((team) => team.id === teamId ? updatedTeam : team));
+      setInvites((current) => current.map((invite) => invite.team_id === teamId
+        ? { ...invite, github_repo: updatedTeam.github_repo }
+        : invite));
+      setCreatedRepository({ team: updatedTeam, webhook: payload.webhook });
+      setRepositoryTeamId(null);
+    } catch {
+      setRepositoryError("作成結果を確認できませんでした。再試行する前にGitHubで作成結果を確認してください。");
+    } finally {
+      setIsBusy(false);
+    }
   }
 
   async function updateRegisteredTeam(event: FormEvent<HTMLFormElement>) {
@@ -1530,6 +1581,7 @@ export function OnboardingClient({
                         <button
                           type="button"
                           onClick={() => startEditingTeam(team)}
+                          disabled={isBusy}
                           className="grid size-9 shrink-0 place-items-center rounded-xl border border-line bg-surface text-muted shadow-soft transition-colors hover:text-ink"
                           aria-label={`${team.name}を編集`}
                           title="チームを編集"
@@ -1546,6 +1598,56 @@ export function OnboardingClient({
                         >
                           <Trash2 className="size-4" />
                         </button>
+                      </div>
+                    )}
+
+                    {organizationRepository && !team.github_repo && editingTeamId !== team.id && (
+                      repositoryTeamId === team.id ? (
+                        <form onSubmit={(event) => void createTeamRepository(event, team.id)} className="mt-3 space-y-3 border-t border-line/70 pt-3">
+                          <p className="text-xs leading-5 text-ink2">
+                            非公開リポジトリを作成して、このチームに連携します。参加者のアクセス権は作成後にGitHubで設定してください。
+                          </p>
+                          {organizationRepository.installUrl && (
+                            <a href={organizationRepository.installUrl} target="_blank" rel="noreferrer" className="inline-block text-xs font-medium text-pulse underline underline-offset-2">
+                              GitHub AppをOrganizationにインストール
+                            </a>
+                          )}
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <Field label="Organization名">
+                              <input value={organizationName} onChange={(event) => setOrganizationName(event.target.value)}
+                                className={inputClass} placeholder="example-hackathon" maxLength={39} autoCapitalize="none" spellCheck={false} disabled={isBusy} required />
+                            </Field>
+                            <Field label="リポジトリ名">
+                              <input value={repositoryName} onChange={(event) => setRepositoryName(event.target.value)}
+                                className={inputClass} placeholder="team-alpha" maxLength={100} autoCapitalize="none" spellCheck={false} disabled={isBusy} required />
+                            </Field>
+                          </div>
+                          {repositoryError && <p role="alert" className="text-xs leading-5 text-hot">{repositoryError}</p>}
+                          <div className="flex flex-col gap-2 sm:flex-row-reverse">
+                            <button type="submit" disabled={isBusy} className={`${primaryButtonClass} sm:w-auto`}>
+                              {isBusy ? "作成中…" : "非公開リポジトリを作成"}
+                            </button>
+                            <button type="button" disabled={isBusy} onClick={() => setRepositoryTeamId(null)}
+                              className="h-12 rounded-xl border border-line px-4 text-sm font-medium text-ink2 hover:border-lineStrong disabled:opacity-40">
+                              キャンセル
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        <button type="button" disabled={isBusy} onClick={() => startCreatingRepository(team)}
+                          className="mt-2 min-h-9 text-xs font-medium text-pulse underline underline-offset-2 disabled:opacity-40">
+                          Organizationにリポジトリを作成
+                        </button>
+                      )
+                    )}
+
+                    {createdRepository?.team.id === team.id && team.github_repo && createdRepository.team.github_repo === team.github_repo && (
+                      <div role="status" className="mt-3 space-y-2">
+                        <p className="text-xs leading-5 text-ink2">
+                          リポジトリ <a href={`https://github.com/${team.github_repo}`} target="_blank" rel="noreferrer" className="break-all font-medium text-pulse underline underline-offset-2">{team.github_repo}</a>
+                          {" を作成しました。GitHubでチームメンバーにアクセス権を付与してください。"}
+                        </p>
+                        <WebhookNotice result={createdRepository.webhook} githubRepo={team.github_repo} />
                       </div>
                     )}
 

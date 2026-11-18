@@ -66,9 +66,7 @@ export async function ensureRepoWebhook({
   githubRepo: string;
   requestUrl?: string;
 }): Promise<WebhookSetupResult> {
-  const secret = process.env.GITHUB_WEBHOOK_SECRET;
-
-  if (!secret) {
+  if (!process.env.GITHUB_WEBHOOK_SECRET) {
     return { status: "skipped", reason: "GITHUB_WEBHOOK_SECRET が設定されていません。" };
   }
 
@@ -85,6 +83,24 @@ export async function ensureRepoWebhook({
       reason:
         "Webhookを設定する権限がありません。ログインし直すと自動で設定できるようになります。"
     };
+  }
+
+  return ensureRepoWebhookWithToken({ accessToken, githubRepo, requestUrl });
+}
+
+/** The caller has already obtained a GitHub App token with Webhooks write access. */
+export async function ensureRepoWebhookWithToken({
+  accessToken,
+  githubRepo,
+  requestUrl
+}: {
+  accessToken: string;
+  githubRepo: string;
+  requestUrl?: string;
+}): Promise<WebhookSetupResult> {
+  const secret = process.env.GITHUB_WEBHOOK_SECRET;
+  if (!secret) {
+    return { status: "skipped", reason: "GITHUB_WEBHOOK_SECRET が設定されていません。" };
   }
 
   const webhookUrl = resolveWebhookUrl(requestUrl);
@@ -115,7 +131,8 @@ export async function ensureRepoWebhook({
     // 二重登録を避けるため、まず同じURLのhookを探す。
     const existingResponse = await fetch(`${hooksEndpoint}?per_page=100`, {
       headers: githubHeaders(accessToken),
-      cache: "no-store"
+      cache: "no-store",
+      signal: AbortSignal.timeout(8000)
     });
 
     if (existingResponse.status === 403 || existingResponse.status === 404) {
@@ -135,6 +152,7 @@ export async function ensureRepoWebhook({
         const patched = await fetch(`${hooksEndpoint}/${existing.id}`, {
           method: "PATCH",
           headers: githubHeaders(accessToken),
+          signal: AbortSignal.timeout(8000),
           body: JSON.stringify({ active: true, events: WEBHOOK_EVENTS, config })
         });
 
@@ -147,6 +165,7 @@ export async function ensureRepoWebhook({
     const created = await fetch(hooksEndpoint, {
       method: "POST",
       headers: githubHeaders(accessToken),
+      signal: AbortSignal.timeout(8000),
       body: JSON.stringify({
         name: "web",
         active: true,

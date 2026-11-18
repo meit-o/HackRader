@@ -63,6 +63,14 @@ https://<Vercelのドメイン>/api/auth/wakatime/callback
 
 `GITHUB_OAUTH_CALLBACK_URL`や`WAKATIME_OAUTH_CALLBACK_URL`を明示している場合も、それぞれ上記のURLに合わせます。これらの環境変数はVercelで変更後、再デプロイが必要です。ローカルやPreviewには、その環境専用のOAuth設定を使ってください。
 
+## Organizationにチーム用リポジトリを作る
+
+1. [GitHub Appを登録](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app)します。リポジトリ権限は **Repository creation: Read and write** と **Webhooks: Read and write**、Organization権限は **Members: Read-only** を設定します。GitHub App自体のWebhookは無効にし、HackRadarがリポジトリごとに既存の `/api/github/webhook` を登録します。
+2. GitHub Appの **App ID** を `GITHUB_APP_ID`、生成したPEM秘密鍵の内容を `GITHUB_APP_PRIVATE_KEY` に設定します。GitHub AppのURL `https://github.com/apps/<slug>` の `<slug>` を `GITHUB_APP_SLUG` に設定すると運営画面にインストールリンクが出ます。秘密鍵はサーバーの環境変数に保存し、Vercelでの変更後は再デプロイします。
+3. 対象のOrganizationにGitHub Appをインストールします。別のOrganizationへのインストールを許可する場合は、GitHub Appの公開範囲も確認します。
+4. イベント運営者とOrganizationオーナーの両方の権限を持つGitHubアカウントでHackRadarにログインします。運営のチーム一覧から「Organizationにリポジトリを作成」を選び、Organization名とリポジトリ名を入力します。非公開リポジトリをREADME付きで作成し、チームに紐づけます。
+5. GitHubでチームメンバーにリポジトリのアクセス権を付与します。公開URLと `GITHUB_WEBHOOK_SECRET` を設定した環境ではWebhookも自動登録します。自動登録に失敗した場合は、運営画面に表示される手順で設定できます。作成したリポジトリの紐づけは運営だけが編集できます。
+
 ## ローカルのPostgreSQLを使う
 
 Dockerは使わず、PCにPostgreSQLをインストールしてポート`5432`で起動します。

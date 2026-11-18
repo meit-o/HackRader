@@ -76,7 +76,8 @@ export async function POST(request: Request) {
   try {
     const team = await setTeamRepo({
       teamId: body.teamId,
-      githubRepo: body.githubRepo
+      githubRepo: body.githubRepo,
+      allowManaged: identity?.role === "admin"
     });
     if (!team.github_repo) {
       throw new Error("リポジトリを設定できませんでした。");

@@ -324,7 +324,7 @@ export async function getPostgresHackVerseState(
 
   const teamsQuery = db
     .table("teams")
-    .select("id,event_id,name,github_repo,score,commit_count,house_level,created_at");
+    .select("id,event_id,name,github_repo,github_repo_managed,score,commit_count,house_level,created_at");
   if (eventId) teamsQuery.eq("event_id", eventId);
 
   const teamsResult = await teamsQuery;
@@ -2492,6 +2492,7 @@ export async function createTeamByName(input: { name: string; eventId?: string }
 export async function setTeamRepo(input: {
   teamId: string;
   githubRepo: string;
+  allowManaged?: boolean;
 }): Promise<Team> {
   const githubRepo = normalizeGitHubRepo(input.githubRepo);
 
@@ -2516,13 +2517,14 @@ export async function setTeamRepo(input: {
         throw new Error("そのリポジトリは別のチームが使っています。");
       }
 
-      const { data, error } = await db
+      const update = db
         .table("teams")
         .update({ github_repo: githubRepo })
-        .eq("id", input.teamId)
-        .select("*")
-        .single();
+        .eq("id", input.teamId);
+      if (!input.allowManaged) update.eq("github_repo_managed", false);
+      const { data, error } = await update.select("*").maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error("このチームのリポジトリは運営が設定しています。");
       return normalizeTeam(data as Team);
     }
   }
@@ -2530,6 +2532,7 @@ export async function setTeamRepo(input: {
   const store = getMemoryStore();
   const team = store.teams.find((candidate) => candidate.id === input.teamId);
   if (!team) throw new Error("チームが見つかりません。");
+  if (team.github_repo_managed && !input.allowManaged) throw new Error("このチームのリポジトリは運営が設定しています。");
 
   const taken = store.teams.find(
     (candidate) =>
@@ -2589,7 +2592,7 @@ export async function updateTeam(input: {
 
       const { data, error } = await db
         .table("teams")
-        .update({ name, github_repo: githubRepo })
+        .update({ name, github_repo: githubRepo, ...(githubRepo ? {} : { github_repo_managed: false }) })
         .eq("id", input.teamId)
         .select("*")
         .single();
@@ -2622,6 +2625,7 @@ export async function updateTeam(input: {
 
   team.name = name;
   team.github_repo = githubRepo;
+  if (!githubRepo) team.github_repo_managed = false;
   return team;
 }
 
