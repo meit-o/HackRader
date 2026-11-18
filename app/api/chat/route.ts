@@ -4,6 +4,7 @@ import { isGitHubAuthConfigured } from "@/lib/github-auth";
 import { getCurrentIdentity } from "@/lib/session";
 import { createChatMessage, getTeamById, isTeamMember } from "@/lib/store";
 import type { ChatChannel, ChatMessage } from "@/lib/types";
+import { notifyEventStateChanged } from "@/lib/realtime";
 
 export const dynamic = "force-dynamic";
 
@@ -100,6 +101,7 @@ export async function POST(request: Request) {
       body: body.body
     });
 
+    await notifyEventStateChanged(identity?.eventId);
     return NextResponse.json({ message });
   } catch (error) {
     return NextResponse.json(

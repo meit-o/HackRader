@@ -4,6 +4,7 @@ import { isDemoModeEnabled } from "@/lib/env";
 import { isGitHubAuthConfigured } from "@/lib/github-auth";
 import { getCurrentIdentity } from "@/lib/session";
 import { createHelpReply, getHelpPostById } from "@/lib/store";
+import { notifyEventStateChanged } from "@/lib/realtime";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +70,7 @@ export async function POST(request: Request) {
       body: body.body
     });
 
+    await notifyEventStateChanged(identity?.eventId);
     return NextResponse.json({ reply });
   } catch (error) {
     return apiFailure("help-replies", error, "回答を投稿できませんでした。");

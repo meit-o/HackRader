@@ -30,6 +30,7 @@ export default async function DashboardPage() {
       <DashboardClient
         initialState={state}
         event={event}
+        eventId={identity?.eventId}
         view="dashboard"
         viewer={viewer}
         demoEnabled={isDemoModeEnabled()}

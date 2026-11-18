@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { parseGitHubWebhook, verifyGitHubSignature } from "@/lib/github";
-import { recordRepositoryActivity } from "@/lib/store";
+import { getEventIdsForTeams, recordRepositoryActivity } from "@/lib/store";
+import { notifyEventStateChanged } from "@/lib/realtime";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +58,16 @@ export async function POST(request: Request) {
         message:
           "このリポジトリはどのチームにも登録されていないため、記録しませんでした。"
       });
+    }
+
+    // The activity is already durable in Postgres. Pub/Sub is a best-effort wake-up;
+    // reconnecting clients reload the complete snapshot, and a Redis outage must not
+    // make GitHub retry an already committed delivery.
+    try {
+      const eventIds = await getEventIdsForTeams(activities.map((activity) => activity.team_id));
+      await Promise.all(eventIds.map((eventId) => notifyEventStateChanged(eventId)));
+    } catch (error) {
+      console.error("Could not look up event for realtime activity notification.", error);
     }
 
     return NextResponse.json({

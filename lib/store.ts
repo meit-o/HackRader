@@ -814,6 +814,34 @@ export async function recordRepositoryActivity(input: {
   return recorded.filter((activity): activity is ActivityView => activity !== null);
 }
 
+/** Return the events whose dashboards contain these teams, for scoped realtime notifications. */
+export async function getEventIdsForTeams(teamIds: string[]): Promise<string[]> {
+  const uniqueTeamIds = [...new Set(teamIds.filter(Boolean))];
+  if (uniqueTeamIds.length === 0) return [];
+
+  if (isDatabaseConfigured()) {
+    const db = getPostgresStore();
+    if (!db) return [];
+    const { data, error } = await db
+      .table("teams")
+      .select("event_id")
+      .in("id", uniqueTeamIds);
+    if (error) throw error;
+    const eventIds = (data ?? [])
+      .map((row: any) => String(row.event_id ?? ""))
+      .filter((eventId: string) => eventId.length > 0);
+    return [...new Set<string>(eventIds)];
+  }
+
+  const teamIdSet = new Set(uniqueTeamIds);
+  return [...new Set(
+    getMemoryStore().teams
+      .filter((team: any) => teamIdSet.has(team.id))
+      .map((team: any) => String(team.event_id ?? ""))
+      .filter((eventId: string) => eventId.length > 0)
+  )];
+}
+
 /**
  * GitHubログインした運営もDMの宛先にできるよう、最初にDM画面を開いた時点で
  * 公開プロフィールだけを users に同期する。既存メンターの specialty は上書きしない。

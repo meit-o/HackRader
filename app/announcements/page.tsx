@@ -35,7 +35,7 @@ export default async function AnnouncementsPage() {
               : "運営からの全体連絡を確認し、チームの相談を運営へ送れます。"}
         </p>
       </div>
-      <DashboardClient initialState={state} view="announcements" viewer={viewer} />
+      <DashboardClient initialState={state} eventId={identity?.eventId} view="announcements" viewer={viewer} />
     </Shell>
   );
 }

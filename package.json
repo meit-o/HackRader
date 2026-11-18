@@ -5,6 +5,7 @@
   "description": "HackVerse hackathon collaboration dashboard",
   "scripts": {
     "dev": "next dev",
+    "dev:vercel": "vc dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
@@ -14,6 +15,8 @@
     "verify:flow": "node --experimental-transform-types --import ./scripts/register-alias.mjs scripts/verify-flow.ts"
   },
   "dependencies": {
+    "@upstash/redis": "^1.41.0",
+    "@vercel/functions": "^3.11.3",
     "clsx": "^2.1.1",
     "dotenv": "^16.4.7",
     "lucide-react": "^0.468.0",
@@ -22,12 +25,14 @@
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "reflect-metadata": "^0.2.2",
-    "typeorm": "^0.3.28"
+    "typeorm": "^0.3.28",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.1",
     "autoprefixer": "^10.4.20",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.4.6",

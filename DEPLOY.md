@@ -7,11 +7,14 @@
 1. GitHubへこのブランチをpushし、VercelでリポジトリをImportします。
 2. Vercel MarketplaceからNeonを追加し、対象のVercelプロジェクトへ接続します。
 3. Neonの**pooled connection string**を`DATABASE_URL`として設定します。Neonの接続文字列に`sslmode=require`が含まれる場合は、`DATABASE_SSL=true`を設定してください。
-4. 次の環境変数をVercelのProduction、必要ならPreviewにも設定します。
+4. Upstash Redisデータベースを作成し、REST URLとTokenを取得します。Webhookを処理する関数とWebSocket接続を受ける関数が別インスタンスになっても通知を共有するために使います。
+5. 次の環境変数をVercelのProduction、必要ならPreviewにも設定します。
 
    - `DATABASE_URL`
    - `DATABASE_SSL=true`
    - `DB_POOL_SIZE=1`
+   - `UPSTASH_REDIS_REST_URL`
+   - `UPSTASH_REDIS_REST_TOKEN`
    - `AUTH_SECRET`（十分に長いランダム文字列）
    - `GITHUB_CLIENT_ID`
    - `GITHUB_CLIENT_SECRET`
@@ -21,7 +24,8 @@
    - `WAKATIME_CLIENT_SECRET`（使う場合）
 
    Neonの接続文字列は秘密情報です。`NEXT_PUBLIC_`を付けず、Gitへコミットしないでください。
-5. Vercelのデプロイが完了したら、`https://<Vercelのドメイン>/api/health`を開き、`{"status":"ok"}`が返ることを確認します。初回のヘルスチェックでTypeORMがスキーマを作成します。
+6. VercelのFluid Computeを有効にします。WebSocket接続は最長300秒で再接続し、接続後に最新状態を再取得します。長時間接続中のFunction使用量も発生するため、Vercelの利用状況を確認してください。
+7. Vercelのデプロイが完了したら、`https://<Vercelのドメイン>/api/health`を開き、`{"status":"ok"}`が返ることを確認します。初回のヘルスチェックでTypeORMがスキーマを作成します。
 
 ## GitHub OAuthとWebhook
 
