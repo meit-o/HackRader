@@ -60,13 +60,6 @@ export async function POST(request: Request) {
     }
   }
 
-  if (identity?.role === "admin" && !isAnnouncement) {
-    return NextResponse.json(
-      { error: "運営はお知らせチャットのみ利用できます。" },
-      { status: 403 }
-    );
-  }
-
   if (isAnnouncement && identity?.role !== "admin") {
     return NextResponse.json(
       { error: "お知らせを投稿できるのは運営のみです。" },

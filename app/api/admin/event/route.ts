@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isGitHubAuthConfigured } from "@/lib/github-auth";
 import { getCurrentIdentity } from "@/lib/session";
 import { hasEventEnded } from "@/lib/event-schedule";
+import { createMentorInviteCode } from "@/lib/mentor-invite";
 import {
   createTeamByName,
   createTeamInviteForTeam,
@@ -50,7 +51,7 @@ export async function GET() {
     return access ?? NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
   }
 
-  return NextResponse.json({ event: access.event });
+  return NextResponse.json({ event: { ...access.event, mentor_invite_code: createMentorInviteCode(access.event) } });
 }
 
 /** イベント名を登録・変更する。既存イベントの招待コードは維持する。 */
@@ -91,7 +92,7 @@ export async function POST(request: Request) {
       startsAt: body.startsAt,
       endsAt: body.endsAt
     });
-    return NextResponse.json({ event });
+    return NextResponse.json({ event: { ...event, mentor_invite_code: createMentorInviteCode(event) } });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "保存できませんでした。" },

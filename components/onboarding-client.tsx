@@ -1458,11 +1458,11 @@ export function OnboardingClient({
                   どのハッカソンかを表すコードです。参加者にはこれと、下のチームごとの
                   部屋番号の<strong className="font-bold">2つ</strong>を渡します。
                   各チームの「招待URL」を使えば両方が自動で入るので、そちらが確実です。
-                  メンター登録にはこのコードだけを使います。
+                  メンターには、下のメンター専用招待URLを渡してください。
                 </p>
                 <div className="mt-3">
                   <ShareLinkButton
-                    url={`/?code=${encodeURIComponent(hackEvent.join_code)}`}
+                    url={`/?code=${encodeURIComponent(hackEvent.mentor_invite_code ?? hackEvent.join_code)}`}
                     label="メンター用の招待URLを送る"
                     title="HackRadar にメンターとして参加"
                     text="このリンクからメンター登録できます。"

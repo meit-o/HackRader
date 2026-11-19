@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { UserRole } from "@/lib/types";
 
 /**
@@ -94,6 +94,26 @@ function sign(signingInput: string): string {
   return base64url(createHmac("sha256", getAuthSecret()).update(signingInput).digest());
 }
 
+function tokenEncryptionKey() {
+  return createHash("sha256").update(`hackradar:github-token:${getAuthSecret()}`).digest();
+}
+
+function encryptAccessToken(value: string): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", tokenEncryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  return ["v1", iv.toString("base64url"), cipher.getAuthTag().toString("base64url"), encrypted.toString("base64url")].join(".");
+}
+
+function decryptAccessToken(value: string | undefined): string | undefined {
+  // Existing signed cookies expire within 12 hours and remain readable during rollout.
+  if (!value?.startsWith("v1.")) return value;
+  const [, iv, tag, encrypted] = value.split(".");
+  const decipher = createDecipheriv("aes-256-gcm", tokenEncryptionKey(), Buffer.from(iv, "base64url"));
+  decipher.setAuthTag(Buffer.from(tag, "base64url"));
+  return Buffer.concat([decipher.update(Buffer.from(encrypted, "base64url")), decipher.final()]).toString("utf8");
+}
+
 /**
  * セッションcookieの中身を HS256 のJWTとして発行する。
  * 外部ライブラリは使わず node:crypto だけで組み立てている。
@@ -108,7 +128,7 @@ export function serializeIdentity(identity: GitHubIdentity): string {
     avatar: identity.avatarUrl,
     role: identity.role,
     eventId: identity.eventId,
-    gh: identity.accessToken,
+    gh: identity.accessToken ? encryptAccessToken(identity.accessToken) : undefined,
     scp: identity.scopes
   };
 
@@ -172,7 +192,7 @@ export function parseIdentity(token: string | undefined): GitHubIdentity | null 
       role: claims.role,
       eventId: claims.eventId,
       issuedAt: claims.iat,
-      accessToken: claims.gh,
+      accessToken: decryptAccessToken(claims.gh),
       scopes: claims.scp
     };
   } catch {
