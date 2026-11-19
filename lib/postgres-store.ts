@@ -21,6 +21,19 @@ columns.teams.push("github_repo_managed");
 type Result = { data: any; error: Error | null; count?: number };
 type QuerySource = Pick<DataSource, "createQueryBuilder" | "query">;
 
+/**
+ * ILIKE/LIKEは `%`（任意の文字列）と `_`（任意の1文字）をワイルドカードとして解釈する。
+ * `.ilike()` は招待コードやユーザー名など、呼び出し側が「完全一致のつもりで」渡す値にも
+ * 使われているため、ここで渡された値そのものをエスケープし、常にリテラル一致だけが
+ * 成立するようにする。たとえば招待コードに `%` 一文字を送るだけで、認証なしに
+ * 既存の行へ一致してしまう問題（例: /api/judges/join）を、この一箇所で塞ぐ。
+ * PostgreSQLの既定のLIKE/ILIKEエスケープ文字は `\` なので、まず `\` 自身を、
+ * 次に `%` と `_` をエスケープする（順序を変えると二重エスケープになるので注意）。
+ */
+export function escapeLikePattern(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
 /** Application CRUD facade backed by TypeORM QueryBuilder; atomic GitHub scoring uses a TypeORM transaction. */
 class TableQuery implements PromiseLike<Result> {
   private action: "select" | "insert" | "upsert" | "update" | "delete" = "select";
@@ -43,7 +56,7 @@ class TableQuery implements PromiseLike<Result> {
   delete(): this { this.action = "delete"; return this; }
   eq(column: string, value: unknown): this { const i=this.filters.length; this.filters.push((qb,a) => qb.andWhere(`${a}.${column} = :v${i}`, { [`v${i}`]: value })); return this; }
   neq(column: string, value: unknown): this { const i=this.filters.length; this.filters.push((qb,a) => qb.andWhere(`${a}.${column} <> :v${i}`, { [`v${i}`]: value })); return this; }
-  ilike(column: string, value: string): this { const i=this.filters.length; this.filters.push((qb,a) => qb.andWhere(`${a}.${column} ILIKE :v${i}`, { [`v${i}`]: value })); return this; }
+  ilike(column: string, value: string): this { const i=this.filters.length; this.filters.push((qb,a) => qb.andWhere(`${a}.${column} ILIKE :v${i}`, { [`v${i}`]: escapeLikePattern(value) })); return this; }
   is(column: string, value: null | boolean): this {
     const condition = value === null ? "IS NULL" : value ? "IS TRUE" : "IS FALSE";
     this.filters.push((qb, alias) => qb.andWhere(`${alias}.${column} ${condition}`));
