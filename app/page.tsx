@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { createMentorInviteCode } from "@/lib/mentor-invite";
 import { OnboardingClient } from "@/components/onboarding-client";
 import { getGitHubAppInstallUrl, isOrganizationRepositoryCreationConfigured } from "@/lib/github-organization";
 import { getAuthStatus } from "@/lib/session";
@@ -31,7 +32,9 @@ export default async function Page() {
     <OnboardingClient
       key={`${identity?.login ?? "guest"}:${identity?.eventId ?? "none"}:${identity?.role ?? "none"}`}
       initialInvites={invites}
-      initialEvent={hackEvent}
+      initialEvent={hackEvent && identity?.role === "admin"
+        ? { ...hackEvent, mentor_invite_code: createMentorInviteCode(hackEvent) }
+        : hackEvent}
       initialTeams={state.teams}
       // 所属の直しは運営だけの操作なので、他の役割には渡さない。
       initialMembers={identity?.role === "admin" ? state.members : []}

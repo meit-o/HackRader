@@ -50,6 +50,8 @@ export type HackEvent = {
   id: string;
   name: string;
   join_code: string;
+  /** 主催者へのレスポンスだけに含める署名付きメンター招待。DBには保存しない。 */
+  mentor_invite_code?: string;
   owner_github_username: string;
   /** 開催日時はUTCで保存し、画面側で利用者のタイムゾーンに表示する。 */
   starts_at: string | null;

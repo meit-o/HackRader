@@ -28,7 +28,7 @@ function describeError(error: unknown, fallback: string) {
 export function apiFailure(scope: string, error: unknown, fallback: string) {
   const { message, code } = describeError(error, fallback);
   const hint = code ? DB_HINTS[code] : undefined;
-  const resolved = hint ? `${hint} (${code}: ${message})` : message;
+  const resolved = code ? hint ?? fallback : message;
   console.error(`[${scope}]`, code ?? "-", message, error);
-  return NextResponse.json({ error: resolved, code }, { status: 400 });
+  return NextResponse.json({ error: resolved, code }, { status: code ? 503 : 400 });
 }

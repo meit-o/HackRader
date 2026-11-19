@@ -1,14 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- legacy in-memory and database record facade */
 import { randomUUID } from "node:crypto";
+import type { EntityManager } from "typeorm";
 import {
   ACTIVITY_LABELS,
   DEFAULT_SCORE_BY_ACTIVITY,
   normalizeScoreConfig
 } from "@/lib/constants";
-import { isDatabaseConfigured } from "@/lib/database";
+import { getDataSource, isDatabaseConfigured } from "@/lib/database";
 import { normalizeGitHubRepo } from "@/lib/github-repo";
 import { getHouseLevel } from "@/lib/house";
 import { normalizeEventSchedule } from "@/lib/event-schedule";
+import { mentorInviteEventId, usesDemoMentorInvites, verifyMentorInvite } from "@/lib/mentor-invite";
 import {
   seedActivities,
   seedChatMessages,
@@ -650,18 +652,6 @@ export async function recordActivity(input: {
       // チームを特定してから、そのチームが属するイベントの配点を読む。
       const scoreConfig = await getScoreConfig(team.event_id);
       const scoreDelta = scoreConfig[input.type];
-
-      // 同じコミットを機能ブランチとmainへpushしても、SHA単位では一度だけ数える。
-      if (input.type === "push") {
-        const { data: previousActivities, error: previousActivitiesError } = await db
-          .table("activities")
-          .select("metadata")
-          .eq("team_id", team.id)
-          .eq("type", "push")
-          .limit(10000);
-        if (previousActivitiesError) throw previousActivitiesError;
-        commitDelta = uniqueCommitDelta(metadata, (previousActivities ?? []) as Activity[]);
-      }
 
       const message = makeActivityMessage(
         activitySubject(team.name, actorLogin),
@@ -1403,25 +1393,26 @@ export async function createHelpReply(input: {
   };
 
   if (isDatabaseConfigured()) {
-    const db = getPostgresStore();
-    if (db) {
+    const source = await getDataSource();
+    return source.transaction(async (manager) => {
+      const db = getPostgresStore(manager);
       const { data, error } = await db
         .table("help_replies")
         .insert(reply)
         .select("*")
         .single();
 
-      if (!error && data) {
-        // 最初の回答が付いた時点で「対応中」に進める。
-        await db
-          .table("help_posts")
-          .update({ status: "helping" })
-          .eq("id", input.helpPostId)
-          .eq("status", "open");
+      if (error || !data) throw error ?? new Error("回答を保存できませんでした。");
+      // 最初の回答が付いた時点で「対応中」に進める。
+      const { error: statusError } = await db
+        .table("help_posts")
+        .update({ status: "helping" })
+        .eq("id", input.helpPostId)
+        .eq("status", "open");
 
-        return data as HelpReply;
-      }
-    }
+      if (statusError) throw statusError;
+      return data as HelpReply;
+    });
   }
 
   const store = getMemoryStore();
@@ -1444,39 +1435,32 @@ export async function acceptHelpReply(input: {
   replyId: string;
 }): Promise<void> {
   if (isDatabaseConfigured()) {
-    const db = getPostgresStore();
-    if (db) {
-      await db
-        .table("help_replies")
-        .update({ is_accepted: false })
-        .eq("help_post_id", input.helpPostId);
-
-      const { error } = await db
-        .table("help_replies")
-        .update({ is_accepted: true })
-        .eq("id", input.replyId);
-
-      if (!error) {
-        await db
-          .table("help_posts")
-          .update({ status: "solved" })
-          .eq("id", input.helpPostId);
-        return;
-      }
-    }
+    const source = await getDataSource();
+    await source.transaction(async (manager) => {
+      const [post] = await manager.query("SELECT id FROM help_posts WHERE id = $1 FOR UPDATE", [input.helpPostId]);
+      const [reply] = await manager.query(
+        "SELECT id FROM help_replies WHERE id = $1 AND help_post_id = $2",
+        [input.replyId, input.helpPostId]
+      );
+      if (!post || !reply) throw new Error("採用する回答が見つかりません。");
+      await manager.query(
+        "UPDATE help_replies SET is_accepted = (id = $1) WHERE help_post_id = $2",
+        [input.replyId, input.helpPostId]
+      );
+      await manager.query("UPDATE help_posts SET status = 'solved' WHERE id = $1", [input.helpPostId]);
+    });
+    return;
   }
 
   const store = getMemoryStore();
-  let found = false;
+  const acceptedReply = store.helpReplies.find(
+    (reply) => reply.id === input.replyId && reply.help_post_id === input.helpPostId
+  );
+  if (!acceptedReply) throw new Error("採用する回答が見つかりません。");
 
   for (const reply of store.helpReplies) {
     if (reply.help_post_id !== input.helpPostId) continue;
     reply.is_accepted = reply.id === input.replyId;
-    if (reply.is_accepted) found = true;
-  }
-
-  if (!found) {
-    throw new Error("採用する回答が見つかりません。");
   }
 
   const post = store.helpPosts.find((candidate) => candidate.id === input.helpPostId);
@@ -1613,8 +1597,9 @@ export async function createEvent(input: {
   };
 
   if (isDatabaseConfigured()) {
-    const db = getPostgresStore();
-    if (db) {
+    const source = await getDataSource();
+    return source.transaction(async (manager) => {
+      const db = getPostgresStore(manager);
       const { data, error } = await db.table("events").insert(event).select("*").single();
       if (error || !data) throw error ?? new Error("イベントを作成できませんでした。");
       const { data: ownerUser, error: ownerError } = await db
@@ -1643,7 +1628,7 @@ export async function createEvent(input: {
       );
       if (membershipError) throw membershipError;
       return data as HackEvent;
-    }
+    });
   }
 
   const store = getMemoryStore();
@@ -2093,32 +2078,31 @@ export async function getScoreConfig(eventId?: string): Promise<ScoreConfig> {
  * 途中で配点を変えると、変更前と変更後の活動が混ざって順位の意味が壊れる。
  * それを避けるため、変更時は必ず過去分もそろえる。
  */
-export async function recalculateScores(config: ScoreConfig, eventId: string): Promise<{
+export async function recalculateScores(config: ScoreConfig, eventId: string, manager?: EntityManager): Promise<{
   updatedActivities: number;
   updatedTeams: number;
 }> {
-  const totals = new Map<string, { score: number; commits: number }>();
+  const totals = new Map<string, { score: number }>();
   let updatedActivities = 0;
   const targetEventId = eventId ?? (await getEvent())?.id;
   if (!targetEventId) throw new Error("再計算するイベントを選択してください。");
 
   const applyActivity = (activity: Activity) => {
     const nextDelta = config[activity.type] ?? 0;
-    const commits =
-      activity.type === "push" && typeof activity.metadata?.commitCount === "number"
-        ? activity.metadata.commitCount
-        : 0;
-
-    const bucket = totals.get(activity.team_id) ?? { score: 0, commits: 0 };
+    const bucket = totals.get(activity.team_id) ?? { score: 0 };
     bucket.score += nextDelta;
-    bucket.commits += commits;
     totals.set(activity.team_id, bucket);
 
     return nextDelta;
   };
 
   if (isDatabaseConfigured()) {
-    const db = getPostgresStore();
+    if (!manager) {
+      const source = await getDataSource();
+      return source.transaction((transaction) => recalculateScores(config, eventId, transaction));
+    }
+    await manager.query("SELECT id FROM teams WHERE event_id = $1 ORDER BY id FOR UPDATE", [eventId]);
+    const db = getPostgresStore(manager);
     if (db) {
       const { data: teamRows, error: teamsError } = await db
         .table("teams")
@@ -2134,8 +2118,7 @@ export async function recalculateScores(config: ScoreConfig, eventId: string): P
       const { data, error } = await db
         .table("activities")
         .select("id,team_id,type,score_delta,metadata")
-        .in("team_id", teamIds)
-        .limit(10000);
+        .in("team_id", teamIds);
       if (error) throw error;
 
       const activities = (data ?? []) as Activity[];
@@ -2159,12 +2142,11 @@ export async function recalculateScores(config: ScoreConfig, eventId: string): P
       updatedActivities = changed.length;
 
       for (const team of (teamRows ?? []) as { id: string }[]) {
-        const bucket = totals.get(team.id) ?? { score: 0, commits: 0 };
+        const bucket = totals.get(team.id) ?? { score: 0 };
         const { error: updateError } = await db
           .table("teams")
           .update({
             score: bucket.score,
-            commit_count: bucket.commits,
             house_level: getHouseLevel(bucket.score)
           })
           .eq("id", team.id);
@@ -2190,9 +2172,8 @@ export async function recalculateScores(config: ScoreConfig, eventId: string): P
 
   const eventTeams = store.teams.filter((team: any) => team.event_id === eventId);
   for (const team of eventTeams) {
-    const bucket = totals.get(team.id) ?? { score: 0, commits: 0 };
+    const bucket = totals.get(team.id) ?? { score: 0 };
     team.score = bucket.score;
-    team.commit_count = bucket.commits;
     team.house_level = getHouseLevel(bucket.score);
   }
 
@@ -2213,21 +2194,13 @@ export async function saveScoreConfig(input: unknown, eventId?: string): Promise
   }
 
   if (isDatabaseConfigured()) {
-    const db = getPostgresStore();
-    if (db) {
-      const { error } = await db
-        .table("events")
-        .update({ score_config: config })
-        .eq("id", event.id);
-      if (error) {
-        if ((error.message ?? "").includes("score_config")) {
-          throw new Error(
-            "配点を保存する列がまだありません。Postgresで db/schema.sql を実行してください。"
-          );
-        }
-        throw error;
-      }
-    }
+    const source = await getDataSource();
+    return source.transaction(async (manager) => {
+      await manager.query("SELECT id FROM events WHERE id = $1 FOR UPDATE", [event.id]);
+      await manager.query("UPDATE events SET score_config = $1 WHERE id = $2", [JSON.stringify(config), event.id]);
+      const result = await recalculateScores(config, event.id, manager);
+      return { config, ...result };
+    });
   }
 
   const store = getMemoryStore();
@@ -2282,7 +2255,15 @@ export async function verifyJoinCode(code: string | undefined): Promise<boolean>
 
 /** イベント参加コードまたはチーム招待コードを検証する。 */
 export async function verifyMentorInviteCode(code: string | undefined): Promise<boolean> {
-  return Boolean(code && (await getEventIdForAccessCode(code)));
+  return Boolean(code && (await getEventIdForMentorInvite(code)));
+}
+
+async function getEventIdForMentorInvite(code: string): Promise<string | undefined> {
+  if (usesDemoMentorInvites()) return getEventIdForAccessCode(code);
+  const eventId = mentorInviteEventId(code);
+  if (!eventId) return undefined;
+  const event = await getEvent(eventId);
+  return event && verifyMentorInvite(code, event) ? event.id : undefined;
 }
 
 export async function getEventIdForAccessCode(code: string): Promise<string | undefined> {
@@ -2332,13 +2313,12 @@ export async function joinMentorByCode(input: {
     throw new Error("招待コード、名前、得意なことを入力してください。");
   }
 
-  if (!(await verifyMentorInviteCode(code))) {
+  const eventId = await getEventIdForMentorInvite(code);
+  if (!eventId) {
     throw new Error(
-      "招待コードが違います。イベント参加コードまたはチーム招待コードを確認してください。"
+      "招待コードが違います。運営からメンター専用の招待URLを受け取ってください。"
     );
   }
-  const eventId = await getEventIdForAccessCode(code);
-  if (!eventId) throw new Error("このコードのイベントが見つかりません。");
 
   // 別イベントでの運営ロールを引き継がない。主催者本人が同じイベントへ
   // メンター用コードで入り直した場合だけ、そのイベントの運営を維持する。
@@ -3015,8 +2995,10 @@ export async function joinTeamWithInvite(input: {
   }
 
   if (isDatabaseConfigured()) {
-    const db = getPostgresStore();
-    if (db) {
+    const source = await getDataSource();
+    return source.transaction(async (manager) => {
+      await manager.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`join:${githubUsername.toLowerCase()}`]);
+      const db = getPostgresStore(manager);
       const { data: invite, error: inviteError } = await db
         .table("team_invites")
         .select("*")
@@ -3120,7 +3102,7 @@ export async function joinTeamWithInvite(input: {
         teamName: team.name,
         inviteCode: code
       };
-    }
+    });
   }
 
   const store = getMemoryStore();

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDataSource } from "@/lib/database";
 import { getActiveEventOwner } from "@/lib/event-access";
+import { isSameOriginRequest } from "@/lib/request-origin";
 import {
   authorizeOrganizationRepositoryCreation,
   createOrganizationRepository,
@@ -17,7 +18,7 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (request.headers.get("origin") !== new URL(request.url).origin) {
+  if (!isSameOriginRequest(request)) {
     return NextResponse.json({ error: "HackRadarの運営画面から操作してください。" }, { status: 403 });
   }
 

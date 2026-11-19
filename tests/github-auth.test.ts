@@ -101,6 +101,9 @@ describe("セッションJWT（HS256）", () => {
   it("アクセストークンをJWTに載せて復元できる", () => {
     const token = serializeIdentity({ ...baseIdentity, accessToken: "gho_dummy" });
     expect(parseIdentity(token)?.accessToken).toBe("gho_dummy");
+    const claims = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
+    expect(claims.gh).toMatch(/^v1\./);
+    expect(claims.gh).not.toContain("gho_dummy");
   });
 
   it("有効期限を過ぎたものは拒否する", () => {

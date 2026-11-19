@@ -5,6 +5,7 @@ import { getActiveEventOwner } from "@/lib/event-access";
 import {
   createTeamInvite,
   createTeamInviteForTeam,
+  getTeamById,
   getTeamInvites
 } from "@/lib/store";
 
@@ -66,6 +67,12 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (body.teamId) {
+      const team = await getTeamById(body.teamId);
+      if (!team || team.event_id !== access.event.id) {
+        return NextResponse.json({ error: "このイベントのチームではありません。" }, { status: 403 });
+      }
+    }
     const invitedBy = identity?.displayName ?? body.invitedBy ?? "HackRadar 運営";
     const invite = body.teamId
       ? await createTeamInviteForTeam({ teamId: body.teamId, invitedBy })

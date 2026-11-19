@@ -5,6 +5,7 @@ import {
   serializeIdentity
 } from "@/lib/github-auth";
 import { getCurrentIdentity } from "@/lib/session";
+import { createMentorInviteCode } from "@/lib/mentor-invite";
 import { createEvent } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 /** ログイン済みの人が、自分だけが管理できる新規イベントを作成する。 */
 export async function POST(request: Request) {
   const identity = await getCurrentIdentity();
-  if (!identity) {
+  if (!identity || identity.githubId <= 0) {
     return NextResponse.json({ error: "主催するにはGitHubでログインしてください。" }, { status: 401 });
   }
 
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
       startsAt: body.startsAt,
       endsAt: body.endsAt
     });
-    const response = NextResponse.json({ event });
+    const response = NextResponse.json({ event: { ...event, mentor_invite_code: createMentorInviteCode(event) } });
     response.cookies.set(
       SESSION_COOKIE,
       serializeIdentity({ ...identity, role: "admin", eventId: event.id }),

@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- dynamic SQL facade */
 import { getDataSource } from "@/lib/database";
 import { DataSource, Brackets } from "typeorm";
+import { normalizeScoreConfig } from "@/lib/constants";
+import type { ActivityType } from "@/lib/types";
 
 const TABLES = new Set([
   "users", "events", "teams", "team_members", "event_members", "wakatime_connections",
@@ -17,6 +19,7 @@ const columns: Record<string, string[]> = {
 columns.teams.push("github_repo_managed");
 
 type Result = { data: any; error: Error | null; count?: number };
+type QuerySource = Pick<DataSource, "createQueryBuilder" | "query">;
 
 /** Application CRUD facade backed by TypeORM QueryBuilder; atomic GitHub scoring uses a TypeORM transaction. */
 class TableQuery implements PromiseLike<Result> {
@@ -30,7 +33,7 @@ class TableQuery implements PromiseLike<Result> {
   private returnRows = false;
   private conflict?: string[];
 
-  constructor(private readonly tableName: string, private readonly source?: DataSource) {
+  constructor(private readonly tableName: string, private readonly source?: QuerySource) {
     if (!TABLES.has(tableName)) throw new Error(`Unknown PostgreSQL table: ${tableName}`);
   }
   select(columns = "*"): this { this.columns = columns; this.returnRows = true; return this; }
@@ -107,7 +110,10 @@ class TableQuery implements PromiseLike<Result> {
             ? ` ON CONFLICT (${this.conflict.map(quoteIdentifier).join(", ")}) DO UPDATE SET ${updates.map((name) => `${quoteIdentifier(name)} = EXCLUDED.${quoteIdentifier(name)}`).join(", ")}`
             : ` ON CONFLICT (${this.conflict.map(quoteIdentifier).join(", ")}) DO UPDATE SET ${quoteIdentifier(this.conflict[0])} = EXCLUDED.${quoteIdentifier(this.conflict[0])}`;
         }
-        if (this.returnRows) sql += " RETURNING *";
+        if (this.returnRows) {
+          const returning = this.columns === "*" ? "*" : this.columns.split(",").map((name) => quoteIdentifier(name.trim())).join(", ");
+          sql += ` RETURNING ${returning}`;
+        }
         const result = await source.query(sql, parameters);
         data = this.returnRows ? result : null;
       } else if (this.action === "update") {
@@ -138,17 +144,38 @@ function returnedRows(raw: unknown): unknown {
 }
 
 class PostgresStore {
-  table(tableName: string): any { return new TableQuery(tableName); }
+  constructor(private readonly source?: QuerySource) {}
+  table(tableName: string): any { return new TableQuery(tableName, this.source); }
   async recordActivityAtomically(args: Record<string, any>): Promise<Result> {
     try {
       const source = await getDataSource();
       const data = await source.transaction(async (manager) => {
+        // Serialize activity updates per team before calculating unique commits.
+        await manager.query("SELECT id FROM teams WHERE id = $1 FOR UPDATE", [args.p_team_id]);
+        const [event] = await manager.query(
+          "SELECT events.score_config FROM events JOIN teams ON teams.event_id = events.id WHERE teams.id = $1",
+          [args.p_team_id]
+        );
+        const scoreDelta = normalizeScoreConfig(event?.score_config)[args.p_type as ActivityType];
         await manager.query(`SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, [`${args.p_team_id}:delivery:${args.p_metadata?.githubDeliveryId ?? ""}`]);
         if (args.p_metadata?.commitSha) await manager.query(`SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, [`${args.p_team_id}:commit:${args.p_metadata.commitSha}`]);
         const exists = await manager.query(`SELECT * FROM activities WHERE team_id=$1 AND (($2::text IS NOT NULL AND metadata->>'githubDeliveryId'=$2) OR ($3::text IS NOT NULL AND metadata->>'commitSha'=$3)) ORDER BY created_at DESC LIMIT 1`, [args.p_team_id, args.p_metadata?.githubDeliveryId ?? null, args.p_metadata?.commitSha ?? null]);
         if (exists[0]) return exists[0];
-        const insert = await manager.query(`INSERT INTO activities(id,team_id,type,message,score_delta,actor_login,actor_avatar_url,metadata,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`, [args.p_id,args.p_team_id,args.p_type,args.p_message,args.p_score_delta,args.p_actor_login,args.p_actor_avatar_url,JSON.stringify(args.p_metadata ?? {}),args.p_created_at]);
-        await manager.query(`UPDATE teams SET score=score+GREATEST($2,0), commit_count=commit_count+GREATEST($3,0), house_level=CASE WHEN score+GREATEST($2,0)>=600 THEN 4 WHEN score+GREATEST($2,0)>=300 THEN 3 WHEN score+GREATEST($2,0)>=100 THEN 2 ELSE 1 END WHERE id=$1`, [args.p_team_id,args.p_score_delta,args.p_commit_delta]);
+        let commitDelta = args.p_commit_delta;
+        if (args.p_type === "push") {
+          const [result] = await manager.query(`
+            SELECT count(DISTINCT incoming.sha)::int AS count
+            FROM jsonb_array_elements_text($2::jsonb) AS incoming(sha)
+            WHERE NOT EXISTS (
+              SELECT 1 FROM activities
+              WHERE team_id = $1 AND type = 'push'
+                AND (metadata->'commitShas' @> to_jsonb(ARRAY[incoming.sha])
+                  OR metadata->>'commitSha' = incoming.sha)
+            )`, [args.p_team_id, JSON.stringify(args.p_metadata?.commitShas ?? (args.p_metadata?.commitSha ? [args.p_metadata.commitSha] : []))]);
+          commitDelta = result.count;
+        }
+        const insert = await manager.query(`INSERT INTO activities(id,team_id,type,message,score_delta,actor_login,actor_avatar_url,metadata,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`, [args.p_id,args.p_team_id,args.p_type,args.p_message,scoreDelta,args.p_actor_login,args.p_actor_avatar_url,JSON.stringify(args.p_metadata ?? {}),args.p_created_at]);
+        await manager.query(`UPDATE teams SET score=score+GREATEST($2,0), commit_count=commit_count+GREATEST($3,0), house_level=CASE WHEN score+GREATEST($2,0)>=600 THEN 4 WHEN score+GREATEST($2,0)>=300 THEN 3 WHEN score+GREATEST($2,0)>=100 THEN 2 ELSE 1 END WHERE id=$1`, [args.p_team_id,scoreDelta,commitDelta]);
         return insert[0];
       });
       return { data, error: null };
@@ -156,4 +183,4 @@ class PostgresStore {
   }
 }
 
-export function getPostgresStore(): PostgresStore { return new PostgresStore(); }
+export function getPostgresStore(source?: QuerySource): PostgresStore { return new PostgresStore(source); }

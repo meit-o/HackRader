@@ -21,10 +21,16 @@ export function getDataSource(): Promise<DataSource> {
   }
 
   globalThis.hackRadarDataSource ??= (async () => {
+    const databaseUrl = new URL(process.env.DATABASE_URL!);
+    // pg connection-string SSL settings override the explicit ssl option.
+    // Enforce certificate verification for every TLS-enabled connection.
+    if (process.env.DATABASE_SSL !== "false") {
+      databaseUrl.searchParams.set("sslmode", "verify-full");
+    }
     const source = new DataSource({
       type: "postgres",
-      url: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: false },
+      url: databaseUrl.toString(),
+      ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: true },
       entities: [],
       migrations: [InitialPostgresSchema1730000000000, ManagedTeamRepositories1795000000000],
       migrationsTableName: "typeorm_migrations",
@@ -39,7 +45,10 @@ export function getDataSource(): Promise<DataSource> {
       }
     });
     return source.initialize();
-  })();
+  })().catch((error) => {
+    globalThis.hackRadarDataSource = undefined;
+    throw error;
+  });
 
   return globalThis.hackRadarDataSource;
 }
