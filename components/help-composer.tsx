@@ -111,7 +111,7 @@ export function HelpComposer({
               value={customCategory}
               onChange={(event) => setCustomCategory(event.target.value)}
               required
-              maxLength={60}
+              maxLength={50}
               placeholder="例：データベース設計"
               className={`h-10 ${fieldClass}`}
             />
@@ -124,7 +124,7 @@ export function HelpComposer({
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             required
-            maxLength={120}
+            maxLength={100}
             placeholder="例：ログイン後もセッションが切れる"
             className={`h-10 ${fieldClass}`}
           />
@@ -136,7 +136,7 @@ export function HelpComposer({
             value={body}
             onChange={(event) => setBody(event.target.value)}
             required
-            maxLength={3000}
+            maxLength={2000}
             rows={4}
             placeholder="やりたいこと・試したこと・出ているエラーを書いてください。"
             className={`resize-none py-2 ${fieldClass}`}

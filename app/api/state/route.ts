@@ -5,7 +5,7 @@ import { getHackVerseState } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   const identity = await getCurrentIdentity();
   if (isGitHubAuthConfigured() && (!identity || !identity.eventId)) {
     return NextResponse.json(
@@ -15,11 +15,14 @@ export async function GET() {
   }
 
   try {
+    const requestedView = new URL(request.url).searchParams.get("view");
+    const view = requestedView === "help" || requestedView === "announcements" ? requestedView : "dashboard";
     const state = await getHackVerseState(
       identity?.eventId,
       identity
         ? { githubUsername: identity.login, role: identity.role }
-        : undefined
+        : undefined,
+      view
     );
     return NextResponse.json(state, {
       headers: {

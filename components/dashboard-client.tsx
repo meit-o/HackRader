@@ -60,7 +60,7 @@ export function DashboardClient({
     createHelpReply,
     acceptHelpReply,
     createChatMessage
-  } = useHackVerseState(initialState, eventId);
+  } = useHackVerseState(initialState, eventId, view);
 
   // 参加時に保存したセッションから自分のチームを拾い、一覧で目印を付ける。
   const [myTeamId, setMyTeamId] = useState<string | null>(null);

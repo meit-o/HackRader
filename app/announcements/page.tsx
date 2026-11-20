@@ -11,7 +11,8 @@ export default async function AnnouncementsPage() {
   if (isConfigured && (!identity || !identity.eventId)) redirect("/");
   const state = await getHackVerseState(
     identity?.eventId,
-    identity ? { githubUsername: identity.login, role: identity.role } : undefined
+    identity ? { githubUsername: identity.login, role: identity.role } : undefined,
+    "announcements"
   );
   const viewer = identity
     ? {

@@ -5,10 +5,11 @@ import type {
   ActivityType,
   ChatChannel,
   ChatMessage,
-  HackVerseState
+  HackVerseState,
+  StateView
 } from "@/lib/types";
 
-export function useHackVerseState(initialState: HackVerseState, eventId?: string | null) {
+export function useHackVerseState(initialState: HackVerseState, eventId?: string | null, view: StateView = "dashboard") {
   const [state, setState] = useState(initialState);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [connectedEventId, setConnectedEventId] = useState<string | null>(null);
@@ -19,7 +20,8 @@ export function useHackVerseState(initialState: HackVerseState, eventId?: string
   const refresh = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      const response = await fetch("/api/state", { cache: "no-store" });
+      const path = view === "dashboard" ? "/api/state" : `/api/state?view=${view}`;
+      const response = await fetch(path, { cache: "no-store" });
       if (!response.ok) {
         return;
       }
@@ -35,7 +37,7 @@ export function useHackVerseState(initialState: HackVerseState, eventId?: string
     } finally {
       setIsRefreshing(false);
     }
-  }, []);
+  }, [view]);
 
   useEffect(() => {
     if (!eventId) return;
