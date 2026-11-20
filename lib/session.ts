@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { cache } from "react";
 import {
   SESSION_COOKIE,
   isGitHubAuthConfigured,
@@ -8,7 +9,7 @@ import {
 import { getEventMemberRole, getMembershipInEvent, isEventOwner } from "@/lib/store";
 
 /** Server Component / Route Handler から現在のログイン状態を読む。 */
-export async function getCurrentIdentity(): Promise<GitHubIdentity | null> {
+export const getCurrentIdentity = cache(async (): Promise<GitHubIdentity | null> => {
   const identity = parseIdentity((await cookies()).get(SESSION_COOKIE)?.value);
   if (!identity?.eventId) return identity;
 
@@ -26,7 +27,7 @@ export async function getCurrentIdentity(): Promise<GitHubIdentity | null> {
   // 古いcookieや、所属が削除された後のcookieはイベント権限として使わない。
   // GitHubログイン自体は残し、役割とイベントだけを選び直せる状態へ戻す。
   return allowed ? identity : { ...identity, role: "participant", eventId: undefined };
-}
+});
 
 export type AuthStatus = {
   isConfigured: boolean;

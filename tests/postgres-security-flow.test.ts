@@ -120,4 +120,26 @@ describe.skipIf(!auditUrl)("PostgreSQL security and concurrent workflows", () =>
       helpPostId: crypto.randomUUID(), authorName: "Missing question", body: "Should fail"
     })).rejects.toThrow();
   });
+
+  it("runs fewer database reads for help and announcements while preserving their content", async () => {
+    const queries: string[] = [];
+    const spy = vi.spyOn(source.logger, "logQuery").mockImplementation((query) => { queries.push(query); });
+    try {
+      await getHackVerseState(event.id);
+      const fullReads = queries.length;
+      queries.length = 0;
+      const help = await getHackVerseState(event.id, undefined, "help");
+      expect(help.helpPosts.length).toBeGreaterThan(0);
+      expect(queries.length).toBeLessThan(fullReads);
+      expect(queries.join("\n")).not.toContain('FROM "activities"');
+      expect(queries.join("\n")).not.toContain('FROM "chat_messages"');
+      queries.length = 0;
+      await getHackVerseState(event.id, undefined, "announcements");
+      expect(queries.length).toBeLessThan(fullReads);
+      expect(queries.join("\n")).not.toContain('FROM "help_posts"');
+      expect(queries.join("\n")).not.toContain('FROM "activities"');
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });

@@ -224,6 +224,10 @@ export function OnboardingClient({
   const [editingGithubRepo, setEditingGithubRepo] = useState("");
   const [repositoryTeamId, setRepositoryTeamId] = useState<string | null>(null);
   const [organizationName, setOrganizationName] = useState("");
+  const [organizationOptions, setOrganizationOptions] = useState<string[]>([]);
+  const [organizationOptionsState, setOrganizationOptionsState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [organizationOptionsError, setOrganizationOptionsError] = useState("");
+  const [organizationInstallUrl, setOrganizationInstallUrl] = useState(organizationRepository?.installUrl ?? null);
   const [repositoryName, setRepositoryName] = useState("");
   const [repositoryError, setRepositoryError] = useState("");
   const [createdRepository, setCreatedRepository] = useState<{ team: Team; webhook: WebhookResult } | null>(null);
@@ -598,11 +602,32 @@ export function OnboardingClient({
     setRepositoryTeamId(team.id);
     setRepositoryName(team.name.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 100));
     setRepositoryError("");
+    void loadOrganizationTargets();
+  }
+
+  async function loadOrganizationTargets() {
+    setOrganizationOptionsState("loading");
+    setOrganizationOptionsError("");
+    try {
+      const response = await fetch("/api/github/organizations", { cache: "no-store" });
+      const payload = await response.json() as { organizations?: string[]; installUrl?: string | null; error?: string };
+      if (!response.ok || !Array.isArray(payload.organizations)) {
+        throw new Error(payload.error ?? "連携済みOrganizationを読み込めませんでした。");
+      }
+      const options = payload.organizations;
+      setOrganizationOptions(options);
+      setOrganizationName((current) => options.includes(current) ? current : options.length === 1 ? options[0] : "");
+      setOrganizationInstallUrl(payload.installUrl ?? organizationRepository?.installUrl ?? null);
+      setOrganizationOptionsState("ready");
+    } catch (error) {
+      setOrganizationOptionsState("error");
+      setOrganizationOptionsError(error instanceof Error ? error.message : "連携先を確認できませんでした。");
+    }
   }
 
   async function createTeamRepository(event: FormEvent<HTMLFormElement>, teamId: string) {
     event.preventDefault();
-    if (isBusy) return;
+    if (isBusy || organizationOptionsState === "loading") return;
     setIsBusy(true);
     setRepositoryError("");
 
@@ -1631,24 +1656,40 @@ export function OnboardingClient({
                           <p className="text-xs leading-5 text-ink2">
                             非公開リポジトリを作成して、このチームに連携します。参加者のアクセス権は作成後にGitHubで設定してください。
                           </p>
-                          {organizationRepository.installUrl && (
-                            <a href={organizationRepository.installUrl} target="_blank" rel="noreferrer" className="inline-block text-xs font-medium text-pulse underline underline-offset-2">
+                          {organizationInstallUrl && (
+                            <a href={organizationInstallUrl} target="_blank" rel="noreferrer" className="inline-block text-xs font-medium text-pulse underline underline-offset-2">
                               GitHub AppをOrganizationにインストール
                             </a>
                           )}
                           <div className="grid gap-2 sm:grid-cols-2">
                             <Field label="Organization名">
-                              <input value={organizationName} onChange={(event) => setOrganizationName(event.target.value)}
-                                className={inputClass} placeholder="example-hackathon" maxLength={39} autoCapitalize="none" spellCheck={false} disabled={isBusy} required />
+                              {organizationOptionsState === "ready" ? (
+                                <select value={organizationName} onChange={(event) => setOrganizationName(event.target.value)}
+                                  className={inputClass} disabled={isBusy || organizationOptions.length === 0} required>
+                                  <option value="">{organizationOptions.length === 0 ? "連携済みOrganizationがありません" : "Organizationを選択"}</option>
+                                  {organizationOptions.map((name) => <option key={name} value={name}>{name}</option>)}
+                                </select>
+                              ) : (
+                                <input value={organizationName} onChange={(event) => setOrganizationName(event.target.value)}
+                                  className={inputClass} placeholder={organizationOptionsState === "loading" ? "連携先を確認中…" : "GitHubのOrganization名"}
+                                  maxLength={39} autoCapitalize="none" spellCheck={false} disabled={isBusy || organizationOptionsState === "loading"} required />
+                              )}
                             </Field>
                             <Field label="リポジトリ名">
                               <input value={repositoryName} onChange={(event) => setRepositoryName(event.target.value)}
                                 className={inputClass} placeholder="team-alpha" maxLength={100} autoCapitalize="none" spellCheck={false} disabled={isBusy} required />
                             </Field>
                           </div>
+                          {organizationOptionsState === "loading" && <p role="status" className="text-xs text-muted">利用できるOrganizationを確認しています…</p>}
+                          {organizationOptionsState === "ready" && organizationOptions.length === 0 && (
+                            <p role="status" className="text-xs leading-5 text-ink2">GitHub AppをインストールしたOrganizationのオーナーとしてログインし、一覧を再読み込みしてください。</p>
+                          )}
+                          {organizationOptionsError && <p role="alert" className="text-xs leading-5 text-hot">{organizationOptionsError}</p>}
+                          <button type="button" onClick={() => void loadOrganizationTargets()} disabled={isBusy || organizationOptionsState === "loading"}
+                            className="text-xs font-medium text-pulse underline underline-offset-2 disabled:opacity-40">連携先の一覧を再読み込み</button>
                           {repositoryError && <p role="alert" className="text-xs leading-5 text-hot">{repositoryError}</p>}
                           <div className="flex flex-col gap-2 sm:flex-row-reverse">
-                            <button type="submit" disabled={isBusy} className={`${primaryButtonClass} sm:w-auto`}>
+                            <button type="submit" disabled={isBusy || organizationOptionsState === "loading" || (organizationOptionsState === "ready" && !organizationName)} className={`${primaryButtonClass} sm:w-auto`}>
                               {isBusy ? "作成中…" : "非公開リポジトリを作成"}
                             </button>
                             <button type="button" disabled={isBusy} onClick={() => setRepositoryTeamId(null)}

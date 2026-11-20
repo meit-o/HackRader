@@ -67,6 +67,48 @@ async function githubRequest(path: string, token: string, body?: object) {
   }
 }
 
+/** Return only installations whose Organization is owned by this GitHub user. */
+export async function listOrganizationRepositoryTargets(input: { login: string; githubId: number }) {
+  const appJwt = createAppJwt();
+  const appResponse = await githubRequest("/app", appJwt);
+  if (!appResponse.ok) {
+    throw new OrganizationRepositoryError("GitHub Appの設定を確認できませんでした。", 502);
+  }
+  const app = await appResponse.json() as { slug?: string };
+  const installUrl = app.slug && /^[a-z0-9-]+$/i.test(app.slug)
+    ? `https://github.com/apps/${app.slug}/installations/new`
+    : null;
+  const organizations = new Set<string>();
+
+  for (let page = 1; ; page += 1) {
+    const response = await githubRequest(`/app/installations?per_page=100&page=${page}`, appJwt);
+    if (!response.ok) {
+      throw new OrganizationRepositoryError("連携済みOrganizationを取得できませんでした。", 502);
+    }
+    const installations = await response.json() as Array<{
+      account?: { login?: string };
+      target_type?: string;
+      suspended_at?: string | null;
+    }>;
+    for (const installation of installations) {
+      const organization = installation.account?.login;
+      if (!organization || installation.target_type !== "Organization" || installation.suspended_at) continue;
+      try {
+        await authorizeOrganizationRepositoryCreation({ ...input, organization });
+        organizations.add(organization);
+      } catch (error) {
+        // Other installations are private to their owners. Upstream outages must
+        // remain visible so an outage cannot look like an empty installation list.
+        if (error instanceof OrganizationRepositoryError && (error.status === 403 || error.status === 404)) continue;
+        throw error;
+      }
+    }
+    if (installations.length < 100) break;
+  }
+
+  return { organizations: [...organizations].sort(), installUrl };
+}
+
 export async function authorizeOrganizationRepositoryCreation(input: {
   organization: string;
   login: string;
@@ -76,7 +118,7 @@ export async function authorizeOrganizationRepositoryCreation(input: {
   const orgPath = `/orgs/${encodeURIComponent(input.organization)}`;
   const installationResponse = await githubRequest(`${orgPath}/installation`, appJwt);
   if (installationResponse.status === 404) {
-    throw new OrganizationRepositoryError("Organization名と、対象OrganizationにHackRadarのGitHub Appがインストールされているかを確認してください。", 404);
+    throw new OrganizationRepositoryError(`「${input.organization}」へのGitHub Appのインストールを確認できませんでした。連携済みOrganizationを選ぶか、対象OrganizationにGitHub Appをインストールして一覧を再読み込みしてください。`, 404);
   }
   if (!installationResponse.ok) {
     throw new OrganizationRepositoryError("GitHub Appのインストール情報を取得できませんでした。", 502);

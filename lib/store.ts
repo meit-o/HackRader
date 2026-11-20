@@ -34,6 +34,7 @@ import type {
   DirectMessageContact,
   HackVerseState,
   ScoreConfig,
+  StateView,
   HelpPost,
   HelpPostView,
   HackEvent,
@@ -317,7 +318,8 @@ function isMissingActorColumn(error: { message?: string } | null): boolean {
 
 export async function getPostgresHackVerseState(
   eventId?: string | null,
-  viewer?: StateViewer
+  viewer?: StateViewer,
+  view: StateView = "dashboard"
 ): Promise<HackVerseState> {
   const db = getPostgresStore();
   if (!db) {
@@ -376,16 +378,16 @@ export async function getPostgresHackVerseState(
     contributorResult
   ] = await Promise.all([
     db.table("users").select("*"),
-    eventId && teamIds.length === 0 ? emptyResult : activitiesQuery,
-    eventId && teamIds.length === 0 ? emptyResult : helpPostsQuery,
-    messagesQuery,
+    view !== "dashboard" || (eventId && teamIds.length === 0) ? emptyResult : activitiesQuery,
+    view === "announcements" || (eventId && teamIds.length === 0) ? emptyResult : helpPostsQuery,
+    view === "help" ? emptyResult : messagesQuery,
     eventId && teamIds.length === 0 ? emptyResult : teamMembersQuery,
-    eventId && teamIds.length === 0 ? emptyResult : contributorQuery
+    view !== "dashboard" || (eventId && teamIds.length === 0) ? emptyResult : contributorQuery
   ]);
 
   const helpPostIds = ((helpPostsResult.data ?? []) as HelpPost[]).map((post) => post.id);
   const helpRepliesResult =
-    eventId && helpPostIds.length === 0
+    view === "announcements" || (eventId && helpPostIds.length === 0)
       ? await emptyResult
       : await (() => {
           const query = db
@@ -438,11 +440,12 @@ export async function getPostgresHackVerseState(
 
 export async function getHackVerseState(
   eventId?: string | null,
-  viewer?: StateViewer
+  viewer?: StateViewer,
+  view: StateView = "dashboard"
 ): Promise<HackVerseState> {
   if (isDatabaseConfigured()) {
     // 本番DBの失敗を空のメモリデータで隠さず、利用者と監視に障害を知らせる。
-    return getPostgresHackVerseState(eventId, viewer);
+    return getPostgresHackVerseState(eventId, viewer, view);
   }
 
   const store = getMemoryStore();
@@ -450,12 +453,12 @@ export async function getHackVerseState(
   return withViews(
     store.users,
     teams,
-    store.activities,
-    store.helpPosts,
-    store.helpReplies,
-    store.messages.filter((message) => !eventId || message.event_id === eventId),
+    view === "dashboard" ? store.activities : [],
+    view === "announcements" ? [] : store.helpPosts,
+    view === "announcements" ? [] : store.helpReplies,
+    view === "help" ? [] : store.messages.filter((message) => !eventId || message.event_id === eventId),
     store.teamMembers,
-    store.activities,
+    view === "dashboard" ? store.activities : [],
     viewer
   );
 }

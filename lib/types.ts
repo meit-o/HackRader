@@ -15,6 +15,7 @@ export type ChatChannel = "staff";
  * 審査員は閲覧専用で、開発状況とお知らせだけを見る。
  */
 export type UserRole = "participant" | "mentor" | "admin" | "judge";
+export type StateView = "dashboard" | "help" | "announcements";
 
 export type User = {
   id: string;
