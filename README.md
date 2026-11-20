@@ -117,6 +117,12 @@ Start the Vercel development server with `npm run dev:vercel` after setting the 
 
 Import this repository into Vercel, then install the Neon PostgreSQL integration from the Vercel Marketplace. Map the integration's pooled connection string to `DATABASE_URL`; TypeORM applies pending migrations when the application first connects. Create an Upstash Redis database and set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` alongside GitHub OAuth, webhook, WakaTime, and `AUTH_SECRET` variables. For the complete setup, callback URLs, local PostgreSQL, and data migration steps, see [DEPLOY.md](./DEPLOY.md).
 
+## Bug report email
+
+Set `SUPPORT_EMAIL` to a working support mailbox or forwarding address, then rebuild and deploy. A `バグを報告` mail link appears in the footer of every page. It opens the visitor's mail app with the report subject and does not attach session data or invitation codes. Leaving the variable unset hides the link until the receiving address is ready.
+
+Creating an address in the app does not provision email hosting. Set up the domain's mail provider and MX records separately, and verify delivery from another account before enabling the link. Forwarding to an existing inbox and a dedicated mailbox are separate options.
+
 ## Migrate existing records
 
 The app has no runtime Supabase dependency. To preserve data from the previous deployment, use the one-time TypeORM importer in `scripts/migrate-supabase-data.cjs`, before switching traffic. It copies app records and private DM image files. The source-only credentials are documented in [DEPLOY.md](./DEPLOY.md); do not add them to Render.

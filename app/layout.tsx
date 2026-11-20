@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SupportFooter } from "@/components/support-footer";
 import "./globals.css";
 
 const themeInitializer = `try {
@@ -26,6 +27,7 @@ export default function RootLayout({
       </head>
       <body>
         {children}
+        <SupportFooter />
       </body>
     </html>
   );
