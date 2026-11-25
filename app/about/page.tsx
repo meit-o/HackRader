@@ -12,7 +12,7 @@ import { HackRadarLogo } from "@/components/hackradar-logo";
 export const metadata: Metadata = {
   title: "HackRadarとは | HackRadar",
   description:
-    "HackRadarは、ハッカソンの参加者・チーム・作品とGitHubの開発状況をリアルタイムに可視化するダッシュボードです。参加登録は3ステップ。",
+    "HackRadarは、ハッカソンの参加者・チームとGitHubの開発状況（進捗）をリアルタイムに可視化するダッシュボードです。参加登録は3ステップ。",
   alternates: { canonical: "https://www.hackradar.dev/about" }
 };
 
@@ -23,13 +23,13 @@ const steps = [
     icon: UserRoundPlus
   },
   {
-    title: "参加者・チーム・作品が見える",
-    body: "誰が参加していて、どのチームが何を作っているかが一覧でわかります。",
+    title: "参加者・チーム・進捗が見える",
+    body: "誰が参加していて、各チームの進捗（ポイント）が一覧でわかります。",
     icon: Users
   },
   {
     title: "見つけてもらえる",
-    body: "運営や他の参加者に自分のチームと作品を知ってもらえます。",
+    body: "運営に自分のチームと作品を知ってもらえます。",
     icon: Radar
   }
 ];
@@ -42,10 +42,10 @@ export default function AboutPage() {
           <HackRadarLogo className="mx-auto size-16" />
           <p className="mt-5 text-sm font-bold text-pulse">HackRadarとは</p>
           <h1 className="mt-3 text-3xl font-bold leading-snug tracking-tight text-ink sm:text-[2.5rem] sm:leading-snug">
-            ハッカソンの参加者・チーム・作品が、ひと目でわかる。
+            ハッカソンの参加者・チーム・進捗が、ひと目でわかる。
           </h1>
           <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-ink2 sm:text-base sm:leading-7">
-            HackRadarは、ハッカソンに参加する人・チーム・作品と、GitHubの開発状況をリアルタイムに可視化するダッシュボードです。
+            HackRadarは、ハッカソンに参加する人・チームと、GitHubの開発状況（進捗）をリアルタイムに可視化するダッシュボードです。
           </p>
         </header>
 
