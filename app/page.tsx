@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { createMentorInviteCode } from "@/lib/mentor-invite";
+import { IntroContent } from "@/components/intro-content";
 import { OnboardingClient } from "@/components/onboarding-client";
 import { getGitHubAppInstallUrl, isOrganizationRepositoryCreationConfigured } from "@/lib/github-organization";
 import { getAuthStatus } from "@/lib/session";
@@ -28,7 +29,7 @@ export default async function Page() {
     getEventsJoinedBy(identity?.login)
   ]);
 
-  return (
+  const onboarding = (
     <OnboardingClient
       key={`${identity?.login ?? "guest"}:${identity?.eventId ?? "none"}:${identity?.role ?? "none"}`}
       initialInvites={invites}
@@ -55,5 +56,22 @@ export default async function Page() {
           : null
       }
     />
+  );
+
+  // ログイン済みの表示は従来どおり。未ログインの初回訪問者には、
+  // オンボーディングの上に紹介セクションを置いてアプリの内容を先に伝える。
+  if (identity) {
+    return onboarding;
+  }
+
+  return (
+    <>
+      <div className="bg-paper px-4 pt-10 sm:px-6 sm:pt-12">
+        <div className="mx-auto w-full max-w-3xl">
+          <IntroContent variant="top" />
+        </div>
+      </div>
+      {onboarding}
+    </>
   );
 }
